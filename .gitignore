@@ -1,0 +1,36 @@
+## Node
+node_modules/
+dist/
+coverage/
+.nyc_output/
+
+## Vite / React
+apps/**/dist/
+
+## Next.js
+apps/**/.next/
+apps/**/out/
+
+## Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+## Env files (never commit real secrets)
+.env
+.env.*
+!.env.example
+
+## OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+## Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/crash.log
+**/crash.*.log
