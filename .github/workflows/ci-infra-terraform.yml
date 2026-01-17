@@ -23,8 +23,9 @@ jobs:
       run:
         working-directory: infra/terraform
     env:
-      TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+      TF_PLUGIN_CACHE_DIR: .terraform-plugin-cache
       AWS_REGION: ap-southeast-1
+      AWS_DEFAULT_REGION: ap-southeast-1
 
     steps:
       - name: Checkout
@@ -37,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.terraform.d/plugin-cache
+            infra/terraform/.terraform-plugin-cache
             infra/terraform/.terraform
           key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf','**/*.tfvars','**/versions.tf') }}
           restore-keys: |
@@ -48,6 +49,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::731099197523:role/github-actions-deploy-role
           aws-region: ap-southeast-1
+          audience: sts.amazonaws.com
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -55,7 +57,7 @@ jobs:
           terraform_version: 1.6.6
 
       - name: Create Terraform plugin cache dir
-        run: mkdir -p ~/.terraform.d/plugin-cache
+        run: mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 
       - name: Terraform fmt (check)
         run: terraform fmt -check -recursive
@@ -72,10 +74,10 @@ jobs:
 
       - name: Terraform plan (dev) -> save binary plan
         run: |
-          terraform -chdir=envs/dev plan -input=false -no-color -out=envs/dev/plan.tfplan
+          terraform -chdir=envs/dev plan -input=false -no-color -out=plan.tfplan
           # Export a human-readable and json version for later review
-          terraform -chdir=envs/dev show -no-color envs/dev/plan.tfplan > envs/dev/plan.txt
-          terraform -chdir=envs/dev show -json envs/dev/plan.tfplan > envs/dev/plan.json
+          terraform -chdir=envs/dev show -no-color plan.tfplan > plan.txt
+          terraform -chdir=envs/dev show -json plan.tfplan > plan.json
       
       - name: Upload Terraform plan artifact (dev)
         uses: actions/upload-artifact@v4
