@@ -1,101 +1,253 @@
+# ============================================================================
+# TERRAFORM CI WORKFLOW - Infrastructure Validation & Security Scanning
+# ============================================================================
+# Purpose: Validate Terraform code on every pull request to 'dev' branch
+# This ensures infrastructure changes are tested before merging
+# ============================================================================
+
 name: ci-infra-terraform
 
+# ============================================================================
+# TRIGGER CONFIGURATION
+# ============================================================================
 on:
   pull_request:
+    # Only run when PR targets 'dev' branch
+    # Best practice: validate infra changes before they reach production
     branches: [dev]
+    
+    # Path filter: only trigger when Terraform files change
+    # Saves CI minutes and speeds up feedback for non-infrastructure PRs
     paths:
       - infra/terraform/**
 
+# ============================================================================
+# CONCURRENCY CONTROL
+# ============================================================================
 # Cancel duplicate runs for same ref (fast feedback)
+# If you push new commits to the same PR, cancel old runs
+# Why: saves CI resources and gives faster feedback on latest code
 concurrency:
   group: ci-infra-terraform-${{ github.ref }}
   cancel-in-progress: true
 
+# ============================================================================
+# SECURITY PERMISSIONS (Principle of Least Privilege)
+# ============================================================================
 permissions:
+  # Read-only access to repository content
+  # Needed to: checkout code, read files
   contents: read
+  
+  # Write access to generate OIDC tokens for AWS authentication
+  # Needed to: authenticate to AWS without long-lived credentials
+  # This is MORE SECURE than storing AWS_ACCESS_KEY_ID in secrets
   id-token: write
 
+# ============================================================================
+# JOB DEFINITION
+# ============================================================================
 jobs:
   terraform:
+    # Use Ubuntu runner (fast, cost-effective)
     runs-on: ubuntu-latest
+    
+    # Fail-safe: if job hangs, stop after 15 minutes
+    # Prevents runaway costs and stuck workflows
     timeout-minutes: 15
+    
+    # Set default working directory for all 'run' commands
+    # Avoids repeating 'cd infra/terraform' in every step
     defaults:
       run:
         working-directory: infra/terraform
+    
+    # Environment variables available to all steps
     env:
+      # Cache Terraform provider plugins to speed up workflow
+      # Without this, Terraform downloads plugins on every run
       TF_PLUGIN_CACHE_DIR: .terraform-plugin-cache
+      
+      # Set AWS region for all AWS operations
+      # Both variables ensure compatibility with different AWS tools
       AWS_REGION: ap-southeast-1
       AWS_DEFAULT_REGION: ap-southeast-1
 
     steps:
+      # ======================================================================
+      # STEP 1: CHECKOUT CODE
+      # ======================================================================
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # Fetch full git history (not shallow clone)
+          # Needed for: gitleaks to scan commit history
+          # Note: fetch-depth: 0 means "get all commits"
           fetch-depth: 0
 
+      # ======================================================================
+      # STEP 2: CACHE TERRAFORM PLUGINS (Performance Optimization)
+      # ======================================================================
       # Cache Terraform plugin cache and .terraform dirs to speed runs
+      # Why: Terraform providers (AWS, etc.) can be 100+ MB
+      # Downloading them every run wastes time (2-5 minutes)
       - name: Cache terraform plugins & .terraform
         uses: actions/cache@v4
         with:
+          # Directories to cache between workflow runs
           path: |
             infra/terraform/.terraform-plugin-cache
             infra/terraform/.terraform
+          
+          # Cache key: unique identifier for this cache
+          # If .tf files change, cache is invalidated (new key generated)
+          # hashFiles() creates a hash of file contents
           key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf','**/*.tfvars','**/versions.tf') }}
+          
+          # Fallback keys if exact match not found
+          # Allows partial cache reuse even if some files changed
           restore-keys: |
             ${{ runner.os }}-terraform-
 
+      # ======================================================================
+      # STEP 3: AWS AUTHENTICATION (OIDC - No Static Credentials)
+      # ======================================================================
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          # IAM Role to assume in AWS
+          # This role must trust GitHub's OIDC provider
+          # Security: no AWS access keys stored in GitHub secrets
           role-to-assume: arn:aws:iam::731099197523:role/github-actions-deploy-role
+          
+          # AWS region for operations
           aws-region: ap-southeast-1
+          
+          # OIDC audience claim (standard value for AWS)
+          # This is verified by AWS to ensure token is for AWS STS
           audience: sts.amazonaws.com
 
+      # ======================================================================
+      # STEP 4: INSTALL TERRAFORM CLI
+      # ======================================================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
+          # Pin to specific Terraform version for consistency
+          # Why: Terraform state format can change between versions
+          # Always use the same version across team and CI/CD
           terraform_version: 1.6.6
 
+      # ======================================================================
+      # STEP 5: PREPARE TERRAFORM PLUGIN CACHE DIRECTORY
+      # ======================================================================
       - name: Create Terraform plugin cache dir
+        # Create the cache directory if it doesn't exist
+        # mkdir -p = create parent directories, don't fail if exists
         run: mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 
+      # ======================================================================
+      # STEP 6: TERRAFORM FORMAT CHECK (Code Quality)
+      # ======================================================================
       - name: Terraform fmt (check)
+        # Check if all .tf files follow standard formatting
+        # -check = exit with error if files are not formatted
+        # -recursive = check all subdirectories
+        # Why: consistent code style improves readability and diff clarity
         run: terraform fmt -check -recursive
 
+      # ======================================================================
+      # STEP 7: TERRAFORM INIT + VALIDATE (Dev Environment)
+      # ======================================================================
       - name: Terraform init+validate (dev)
         run: |
+          # Initialize Terraform working directory
+          # -chdir=envs/dev = run command in dev environment directory
+          # -backend=false = don't configure remote backend (state storage)
+          # Why backend=false: we're only validating syntax, not managing state
           terraform -chdir=envs/dev init -backend=false
+          
+          # Validate Terraform configuration syntax and logic
+          # Checks: required variables exist, resources are correctly defined
+          # This catches errors early before plan/apply
           terraform -chdir=envs/dev validate
 
+      # ======================================================================
+      # STEP 8: TERRAFORM INIT + VALIDATE (Prod Environment)
+      # ======================================================================
       - name: Terraform init+validate (prod)
         run: |
+          # Same as dev, but for production environment
+          # We validate both environments to catch environment-specific issues
           terraform -chdir=envs/prod init -backend=false
           terraform -chdir=envs/prod validate
 
+      # ======================================================================
+      # STEP 9: TERRAFORM PLAN (Generate Execution Plan)
+      # ======================================================================
       - name: Terraform plan (dev) -> save binary plan
         run: |
+          # Create execution plan showing what Terraform will do
+          # -input=false = don't prompt for input (non-interactive mode)
+          # -no-color = remove ANSI color codes (cleaner logs)
+          # -out=plan.tfplan = save plan to binary file
           terraform -chdir=envs/dev plan -input=false -no-color -out=plan.tfplan
+          
           # Export a human-readable and json version for later review
+          # Convert binary plan to readable text format
+          # Why: reviewers can see changes without running Terraform locally
           terraform -chdir=envs/dev show -no-color plan.tfplan > plan.txt
+          
+          # Convert plan to JSON format
+          # Why: can be parsed by tools for automated analysis/review
           terraform -chdir=envs/dev show -json plan.tfplan > plan.json
       
+      # ======================================================================
+      # STEP 10: UPLOAD TERRAFORM PLAN (Artifact Storage)
+      # ======================================================================
       - name: Upload Terraform plan artifact (dev)
         uses: actions/upload-artifact@v4
         with:
+          # Artifact name in GitHub UI
           name: terraform-plan-dev
+          
+          # Files to upload (available for download after workflow runs)
+          # Why: team can review exact changes, use in CD pipeline
+          # plan.tfplan = can be applied later with 'terraform apply plan.tfplan'
           path: |
             infra/terraform/envs/dev/plan.tfplan
             infra/terraform/envs/dev/plan.txt
             infra/terraform/envs/dev/plan.json
             
+      # ======================================================================
+      # STEP 11: SECURITY SCAN (Infrastructure as Code)
+      # ======================================================================
       - name: Trivy IaC scan (Terraform)
+        # Trivy scans Terraform code for security misconfigurations
+        # Examples: S3 buckets without encryption, security groups too open
         uses: aquasecurity/trivy-action@0.33.1
         with:
+          # scan-type: 'config' = scan IaC configuration files
           scan-type: 'config'
+          
+          # Directory to scan
           scan-ref: 'infra/terraform'
+          
+          # Don't show progress bar (cleaner CI logs)
           hide-progress: true
+          
+          # Output format (table = human-readable)
           format: 'table'
+          
+          # Only fail on CRITICAL and HIGH severity issues
+          # Medium/Low issues are reported but don't fail the build
           severity: 'CRITICAL,HIGH'
+          
+          # ignore-unfixed: skip vulnerabilities without available fixes
+          # Why: can't fix them anyway, reduces noise
           ignore-unfixed: true
+          
+          # exit-code: '1' = fail the workflow if issues found
+          # This BLOCKS the PR from being merged (shift-left security)
           exit-code: '1'
 
