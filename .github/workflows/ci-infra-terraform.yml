@@ -84,9 +84,9 @@ jobs:
         with:
           name: terraform-plan-dev
           path: |
-            envs/dev/plan.tfplan
-            envs/dev/plan.txt
-            envs/dev/plan.json
+            infra/terraform/envs/dev/plan.tfplan
+            infra/terraform/envs/dev/plan.txt
+            infra/terraform/envs/dev/plan.json
             
       - name: Trivy IaC scan (Terraform)
         uses: aquasecurity/trivy-action@0.33.1
