@@ -17,7 +17,9 @@ locals {
     "repo:${var.github_repo}:ref:refs/heads/main", # Main branch pushes
     "repo:${var.github_repo}:environment:main",    # Main environment deploys (alternative naming)
 
-    "repo:${var.github_repo}:pull_request/*", # All pull requests (requires wildcard)
+    # Pull request workflows use this subject format:
+    # repo:<owner>/<repo>:pull_request
+    "repo:${var.github_repo}:pull_request",
   ]
 }
 

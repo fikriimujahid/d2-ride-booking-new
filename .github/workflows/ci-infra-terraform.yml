@@ -48,7 +48,6 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::731099197523:role/github-actions-deploy-role
           aws-region: ap-southeast-1
-          audience: sts.amazonaws.com
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -86,7 +85,7 @@ jobs:
             envs/dev/plan.tfplan
             envs/dev/plan.txt
             envs/dev/plan.json
-
+            
       - name: Trivy IaC scan (Terraform)
         uses: aquasecurity/trivy-action@0.33.1
         with:
