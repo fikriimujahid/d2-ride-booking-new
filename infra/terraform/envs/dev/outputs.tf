@@ -1,10 +1,6 @@
-# ========================================
-# DEV Environment - Outputs
-# ========================================
-
-# ----------------------------------------
-# VPC Outputs (Phase 2)
-# ----------------------------------------
+# ================================================================================
+# VPC OUTPUTS
+# ================================================================================
 output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id
@@ -45,9 +41,10 @@ output "private_route_table_id" {
   value       = module.vpc.private_route_table_id
 }
 
-# ----------------------------------------
-# IAM Outputs (Phase 3)
-# ----------------------------------------
+# ================================================================================
+# IAM OUTPUTS
+# ================================================================================
+# IAM roles and instance profiles for EC2 instances
 output "backend_api_role_arn" {
   description = "Backend API IAM role ARN"
   value       = module.iam.backend_api_role_arn
@@ -68,9 +65,8 @@ output "driver_web_instance_profile_name" {
   value       = module.iam.driver_web_instance_profile_name
 }
 
-
 # ----------------------------------------
-# Cognito Outputs (Phase 3)
+# Cognito Outputs
 # ----------------------------------------
 output "cognito_user_pool_id" {
   description = "Cognito User Pool ID"
@@ -99,7 +95,7 @@ output "cognito_issuer" {
 }
 
 # ----------------------------------------
-# Security Group Outputs (Phase 3)
+# Security Group Outputs
 # ----------------------------------------
 output "alb_security_group_id" {
   description = "ALB security group ID"
@@ -117,8 +113,51 @@ output "driver_web_security_group_id" {
 }
 
 output "rds_security_group_id" {
-  description = "RDS security group ID"
-  value       = module.security_groups.rds_security_group_id
+  description = "RDS security group ID (from RDS module)"
+  value       = try(module.rds[0].rds_security_group_id, "RDS not enabled")
+}
+
+# ----------------------------------------
+# RDS Outputs
+# ----------------------------------------
+output "rds_endpoint" {
+  description = "RDS instance endpoint (host:port) for application connections"
+  value       = try(module.rds[0].rds_endpoint, "RDS not enabled")
+}
+
+output "rds_address" {
+  description = "RDS instance hostname only (without port)"
+  value       = try(module.rds[0].rds_address, "RDS not enabled")
+}
+
+output "rds_port" {
+  description = "RDS instance port"
+  value       = try(module.rds[0].rds_port, "RDS not enabled")
+}
+
+output "db_name" {
+  description = "Database name"
+  value       = try(module.rds[0].db_name, "RDS not enabled")
+}
+
+output "rds_instance_id" {
+  description = "RDS instance identifier (for lifecycle scripts)"
+  value       = try(module.rds[0].rds_instance_id, "RDS not enabled")
+}
+
+output "rds_resource_id" {
+  description = "RDS resource ID (for IAM database authentication)"
+  value       = try(module.rds[0].rds_resource_id, "RDS not enabled")
+}
+
+output "master_password_secret_arn" {
+  description = "ARN of Secrets Manager secret containing master password (admin use only)"
+  value       = try(module.rds[0].master_password_secret_arn, "RDS not enabled")
+}
+
+output "iam_database_authentication_enabled" {
+  description = "Whether IAM database authentication is enabled"
+  value       = try(module.rds[0].iam_database_authentication_enabled, false)
 }
 
 # ----------------------------------------
@@ -131,7 +170,7 @@ output "environment_summary" {
     project_name = var.project_name
     region       = var.aws_region
     domain       = var.domain_name
-    phase        = "Phase 3: IAM, Cognito, Security Groups"
+    phase        = "Phase 4: RDS with IAM DB Authentication"
 
     # Authentication
     cognito = {
@@ -145,6 +184,16 @@ output "environment_summary" {
       id          = module.vpc.vpc_id
       cidr        = var.vpc_cidr
       nat_enabled = var.enable_nat_gateway
+    }
+
+    # Database
+    rds = {
+      enabled           = var.enable_rds
+      endpoint          = try(module.rds[0].rds_endpoint, "RDS not enabled")
+      database          = try(module.rds[0].db_name, "RDS not enabled")
+      iam_auth_enabled  = try(module.rds[0].iam_database_authentication_enabled, false)
+      instance_class    = var.rds_instance_class
+      lifecycle_control = "Use infra/scripts/dev-stop.sh to reduce costs"
     }
   }
 }
