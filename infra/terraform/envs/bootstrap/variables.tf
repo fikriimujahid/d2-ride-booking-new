@@ -1,10 +1,3 @@
-# ==============================================================================
-# VARIABLE DEFINITIONS - Bootstrap Environment
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Project Name Variable
-# ------------------------------------------------------------------------------
 variable "project" {
   description = "Project name used for resource naming and tagging"
   type        = string
@@ -15,9 +8,6 @@ variable "project" {
   }
 }
 
-# ------------------------------------------------------------------------------
-# AWS Region Variable
-# ------------------------------------------------------------------------------
 variable "aws_region" {
   description = "AWS region where resources will be created (e.g., us-east-1, ap-southeast-1)"
   type        = string
@@ -29,9 +19,6 @@ variable "aws_region" {
   }
 }
 
-# ------------------------------------------------------------------------------
-# Terraform State Bucket Variable
-# ------------------------------------------------------------------------------
 variable "terraform_state_bucket" {
   description = "Name of the S3 bucket for storing Terraform state (must exist before running terraform init)"
   type        = string
@@ -42,11 +29,8 @@ variable "terraform_state_bucket" {
   }
 }
 
-# ------------------------------------------------------------------------------
-# GitHub Repository Variable
-# ------------------------------------------------------------------------------
 variable "github_repo" {
-  description = "GitHub repository in format 'owner/repo' (e.g., 'fikriimujahid/p1-serverless-web-app') - used for OIDC authentication"
+  description = "GitHub repository in format 'owner/repo' (e.g., 'fikriimujahid/d2-ride-booking-new') - used for OIDC authentication"
   type        = string
 
   validation {
