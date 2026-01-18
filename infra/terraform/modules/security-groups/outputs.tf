@@ -29,7 +29,7 @@ output "security_group_summary" {
   value = {
     # SECTION: ALB SECURITY GROUP SUMMARY
     alb = {
-      id = aws_security_group.alb.id
+      id   = aws_security_group.alb.id
       name = aws_security_group.alb.name
       inbound = [
         "HTTPS from 0.0.0.0/0",

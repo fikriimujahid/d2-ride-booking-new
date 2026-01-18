@@ -11,7 +11,7 @@ variable "github_oidc_provider_arn" {
 variable "github_repo" {
   description = "GitHub repository in format 'owner/repo'. Used to restrict IAM role access to specific repository."
   type        = string
-  
+
   # validation {
   #   condition     = can(regex("^[^/]+/[^/]+$", var.github_repo))
   #   error_message = "github_repo must be in format 'owner/repository'"

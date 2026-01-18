@@ -2,7 +2,7 @@
 # VPC CIDR BLOCK
 # ----------------------------------------------------------------------------
 variable "vpc_cidr" {
-  type = string
+  type        = string
   description = "CIDR block for the VPC"
 }
 
@@ -10,7 +10,7 @@ variable "vpc_cidr" {
 # PUBLIC SUBNET CIDR BLOCK
 # ----------------------------------------------------------------------------
 variable "public_subnet_cidr" {
-  type = string
+  type        = string
   description = "CIDR block for the public subnet"
 }
 
@@ -18,7 +18,7 @@ variable "public_subnet_cidr" {
 # PRIVATE SUBNET CIDR BLOCK
 # ----------------------------------------------------------------------------
 variable "private_subnet_cidr" {
-  type = string
+  type        = string
   description = "CIDR block for the private subnet"
 }
 
@@ -26,16 +26,16 @@ variable "private_subnet_cidr" {
 # SECONDARY PRIVATE SUBNET CIDR (OPTIONAL)
 # ----------------------------------------------------------------------------
 variable "private_subnet_cidr_secondary" {
-  type = string
+  type        = string
   description = "CIDR block for an optional secondary private subnet"
-  default = null
+  default     = null
 }
 
 # ----------------------------------------------------------------------------
 # AVAILABILITY ZONE
 # ----------------------------------------------------------------------------
 variable "availability_zone" {
-  type = string
+  type        = string
   description = "Single AZ for subnets (DEV is single-AZ)"
 }
 
@@ -43,9 +43,9 @@ variable "availability_zone" {
 # SECONDARY AVAILABILITY ZONE (OPTIONAL)
 # ----------------------------------------------------------------------------
 variable "availability_zone_secondary" {
-  type = string
+  type        = string
   description = "Secondary AZ for optional private subnet"
-  default = null
+  default     = null
 }
 
 # ----------------------------------------------------------------------------
@@ -53,9 +53,9 @@ variable "availability_zone_secondary" {
 # ----------------------------------------------------------------------------
 variable "enable_nat_gateway" {
   # type: Boolean (true or false)
-  type = bool
+  type        = bool
   description = "Whether to create a NAT Gateway (+ EIP) and private default route"
-  default = false
+  default     = false
 }
 
 # ----------------------------------------------------------------------------
@@ -64,7 +64,7 @@ variable "enable_nat_gateway" {
 variable "tags" {
   # type: map(string) means a set of key-value pairs
   # Example: { Project = "ride-booking", Environment = "dev" }
-  type = map(string)
+  type        = map(string)
   description = "Base tags applied to all resources"
-  default = {}
+  default     = {}
 }

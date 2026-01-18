@@ -38,8 +38,8 @@ terraform {
     # It lets Terraform create/manage AWS resources.
     aws = {
       # Where to download the provider from
-      source  = "hashicorp/aws"
-      
+      source = "hashicorp/aws"
+
       # VERSION CONSTRAINT: Which version of the AWS provider?
       version = "~> 5.0"
     }
@@ -140,10 +140,10 @@ module "bootstrap" {
   # If the OIDC provider doesn't exist, the data source fails, and
   # Terraform stops before even trying to create the module resources.
   github_oidc_provider_arn = data.aws_iam_openid_connect_provider.github.arn
-  github_repo = var.github_repo
+  github_repo              = var.github_repo
 }
 
 output "github_actions_deploy_role_arn" {
   description = "ARN of the github_actions_deploy_role"
-  value = module.bootstrap.github_actions_deploy_role_arn
+  value       = module.bootstrap.github_actions_deploy_role_arn
 }

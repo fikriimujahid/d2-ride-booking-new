@@ -9,7 +9,7 @@ locals {
   # - If "Project" exists in var.tags, use its value
   # - If "Project" doesn't exist, use "project" as fallback
   name_prefix = lookup(var.tags, "Project", "project")
-  env = lookup(var.tags, "Environment", "env")
+  env         = lookup(var.tags, "Environment", "env")
 }
 
 # ----------------------------------------------------------------------------

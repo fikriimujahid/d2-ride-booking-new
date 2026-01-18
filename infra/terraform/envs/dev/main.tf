@@ -30,7 +30,7 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    
+
     # -------------------------------------------------------------------------
     # RANDOM PROVIDER
     # -------------------------------------------------------------------------
@@ -105,7 +105,7 @@ module "vpc" {
 # IAM MODULE - PERMISSIONS AND ROLES
 # ================================================================================
 module "iam" {
-  source = "../../modules/iam"
+  source       = "../../modules/iam"
   environment  = var.environment
   project_name = var.project_name
 
@@ -116,10 +116,10 @@ module "iam" {
   # A unique AWS identifier for your database instance
   rds_resource_id = try(module.rds[0].rds_resource_id, "")
 
-  rds_db_user     = var.rds_db_user
-  aws_region      = data.aws_region.current.name
-  aws_account_id  = data.aws_caller_identity.current.account_id
-  tags = var.tags
+  rds_db_user    = var.rds_db_user
+  aws_region     = data.aws_region.current.name
+  aws_account_id = data.aws_caller_identity.current.account_id
+  tags           = var.tags
 }
 
 # ================================================================================
@@ -130,11 +130,11 @@ module "cognito" {
 
   environment  = var.environment
   project_name = var.project_name
-  
+
   # -----------------------------------------------------------------------------
   # DOMAIN NAME (FOR COGNITO HOSTED UI)
   # -----------------------------------------------------------------------------
-  domain_name  = var.domain_name
+  domain_name             = var.domain_name
   password_minimum_length = var.cognito_password_min_length
 
   tags = var.tags
@@ -172,28 +172,28 @@ module "rds" {
   # -----------------------------------------------------------------------------
   # NETWORK CONFIGURATION
   # -----------------------------------------------------------------------------
-  
+
   # VPC ID - Which VPC the database lives in
-  vpc_id             = module.vpc.vpc_id
-  
+  vpc_id = module.vpc.vpc_id
+
   # VPC CIDR - Used for security group rules
   vpc_cidr = var.vpc_cidr
-  
+
   # PRIVATE SUBNET IDs - Where to place the database
   private_subnet_ids = module.vpc.private_subnet_ids
 
   # -----------------------------------------------------------------------------
   # DATABASE CONFIGURATION
   # -----------------------------------------------------------------------------
-  db_name           = var.db_name
-  db_username       = var.db_master_username
-  instance_class    = var.rds_instance_class
-  allocated_storage = var.rds_allocated_storage
-  engine_version    = var.rds_engine_version
+  db_name                             = var.db_name
+  db_username                         = var.db_master_username
+  instance_class                      = var.rds_instance_class
+  allocated_storage                   = var.rds_allocated_storage
+  engine_version                      = var.rds_engine_version
   iam_database_authentication_enabled = true
-  multi_az            = false # Single-AZ for DEV
-  deletion_protection = false # Allow easy cleanup in DEV
-  skip_final_snapshot = true  # Skip snapshot on deletion in DEV
+  multi_az                            = false # Single-AZ for DEV
+  deletion_protection                 = false # Allow easy cleanup in DEV
+  skip_final_snapshot                 = true  # Skip snapshot on deletion in DEV
 
   # -----------------------------------------------------------------------------
   # SECURITY CONFIGURATION

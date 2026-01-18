@@ -17,9 +17,9 @@
 #   Every production architecture needs a load balancer in front of app servers.
 #   This security group protects the ALB itself.
 resource "aws_security_group" "alb" {
-  name = "${var.environment}-${var.project_name}-alb"
+  name        = "${var.environment}-${var.project_name}-alb"
   description = "Security group for Application Load Balancer (${var.environment})"
-  vpc_id = var.vpc_id
+  vpc_id      = var.vpc_id
 
   tags = merge(
     var.tags,
@@ -60,13 +60,13 @@ resource "aws_security_group" "alb" {
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   # The ID of the security group where this ingress rule will be attached
   security_group_id = aws_security_group.alb.id
-  description = "Allow HTTPS from internet"
+  description       = "Allow HTTPS from internet"
   # IPv4 CIDR block allowed to access this security group
   cidr_ipv4 = "0.0.0.0/0"
   # Starting port of the allowed port range
   from_port = 443
   # Ending port of the allowed port range
-  to_port   = 443
+  to_port = 443
   # Network protocol used for this rule
   ip_protocol = "tcp"
 
@@ -137,12 +137,12 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_backend_api" {
   security_group_id = aws_security_group.alb.id
-  description = "Allow HTTP to backend API targets"
+  description       = "Allow HTTP to backend API targets"
   # The destination security group that is allowed to receive traffic
   referenced_security_group_id = aws_security_group.backend_api.id
-  from_port   = 3000
-  to_port     = 3000
-  ip_protocol = "tcp"
+  from_port                    = 3000
+  to_port                      = 3000
+  ip_protocol                  = "tcp"
 
   tags = merge(
     var.tags,
@@ -171,7 +171,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_backend_api" {
 resource "aws_vpc_security_group_egress_rule" "alb_to_driver_web" {
   security_group_id = aws_security_group.alb.id
 
-  description                  = "Allow HTTP to driver web targets"
+  description = "Allow HTTP to driver web targets"
   # The destination security group that is allowed to receive traffic
   referenced_security_group_id = aws_security_group.driver_web.id
   from_port                    = 3000
@@ -209,9 +209,9 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_driver_web" {
 # ----------------------------------------
 # This is where we define the "firewall" rules for our backend API
 resource "aws_security_group" "backend_api" {
-  name = "${var.environment}-${var.project_name}-backend-api"
+  name        = "${var.environment}-${var.project_name}-backend-api"
   description = "Security group for backend API (NestJS) - ${var.environment}"
-  vpc_id = var.vpc_id
+  vpc_id      = var.vpc_id
 
   tags = merge(
     var.tags,
@@ -256,12 +256,12 @@ resource "aws_security_group" "backend_api" {
 
 resource "aws_vpc_security_group_ingress_rule" "backend_api_from_alb" {
   security_group_id = aws_security_group.backend_api.id
-  description = "Allow HTTP from ALB only"
+  description       = "Allow HTTP from ALB only"
   # The destination security group that is allowed to receive traffic
   referenced_security_group_id = aws_security_group.alb.id
-  from_port   = 3000
-  to_port     = 3000
-  ip_protocol = "tcp"
+  from_port                    = 3000
+  to_port                      = 3000
+  ip_protocol                  = "tcp"
 
   tags = merge(
     var.tags,
@@ -288,9 +288,9 @@ resource "aws_vpc_security_group_ingress_rule" "backend_api_from_alb" {
 
 resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_https" {
   security_group_id = aws_security_group.backend_api.id
-  description = "Allow HTTPS within VPC (for VPC endpoints)"
+  description       = "Allow HTTPS within VPC (for VPC endpoints)"
   # IPv4 CIDR block that outbound traffic is allowed to reach
-  cidr_ipv4 = var.vpc_cidr
+  cidr_ipv4   = var.vpc_cidr
   from_port   = 443
   to_port     = 443
   ip_protocol = "tcp"
@@ -313,7 +313,7 @@ resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_https" {
 
 resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_http" {
   security_group_id = aws_security_group.backend_api.id
-  description = "Allow HTTP within VPC (for internal services)"
+  description       = "Allow HTTP within VPC (for internal services)"
   # IPv4 CIDR block that outbound traffic is allowed to reach
   cidr_ipv4   = var.vpc_cidr
   from_port   = 80
@@ -338,14 +338,14 @@ resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_http" {
 #   Application crashes: "Cannot connect to database"
 
 resource "aws_vpc_security_group_egress_rule" "backend_api_to_rds" {
-  count = var.rds_security_group_id != "" ? 1 : 0
+  count             = var.rds_security_group_id != "" ? 1 : 0
   security_group_id = aws_security_group.backend_api.id
-  description = "Allow MySQL to RDS"
+  description       = "Allow MySQL to RDS"
   # The destination security group that is allowed to receive traffic
   referenced_security_group_id = var.rds_security_group_id
-  from_port   = 3306
-  to_port     = 3306
-  ip_protocol = "tcp"
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
 
   tags = merge(
     var.tags,
@@ -406,7 +406,7 @@ resource "aws_security_group" "driver_web" {
 resource "aws_vpc_security_group_ingress_rule" "driver_web_from_alb" {
   security_group_id = aws_security_group.driver_web.id
 
-  description                  = "Allow HTTP from ALB only"
+  description = "Allow HTTP from ALB only"
   # The destination security group that is allowed to receive traffic
   referenced_security_group_id = aws_security_group.alb.id
   from_port                    = 3000

@@ -89,7 +89,7 @@ data "aws_iam_policy_document" "backend_api" {
   # STATEMENT 1: CloudWatch Logs - Write Permission
   # ========================================
   statement {
-    sid = "CloudWatchLogsWrite"
+    sid    = "CloudWatchLogsWrite"
     effect = "Allow"
     actions = [
       "logs:CreateLogGroup",
@@ -107,7 +107,7 @@ data "aws_iam_policy_document" "backend_api" {
   dynamic "statement" {
     for_each = length(var.secrets_manager_arns) > 0 ? [1] : []
     content {
-      sid = "SecretsManagerReadDBCreds"
+      sid    = "SecretsManagerReadDBCreds"
       effect = "Allow"
       actions = [
         "secretsmanager:GetSecretValue",
@@ -123,7 +123,7 @@ data "aws_iam_policy_document" "backend_api" {
   dynamic "statement" {
     for_each = length(var.secrets_manager_arns) > 0 ? [1] : []
     content {
-      sid = "KMSDecryptSecrets"
+      sid    = "KMSDecryptSecrets"
       effect = "Allow"
       actions = [
         "kms:Decrypt",
@@ -156,7 +156,7 @@ data "aws_iam_policy_document" "backend_api" {
   dynamic "statement" {
     for_each = var.rds_resource_id != "" ? [1] : []
     content {
-      sid = "RDSIAMAuthentication"
+      sid    = "RDSIAMAuthentication"
       effect = "Allow"
       actions = [
         "rds-db:connect"
@@ -174,7 +174,7 @@ data "aws_iam_policy_document" "backend_api" {
 data "aws_iam_policy_document" "driver_web" {
   # STATEMENT: CloudWatch Logs Write Permission
   statement {
-    sid = "CloudWatchLogsWrite"
+    sid    = "CloudWatchLogsWrite"
     effect = "Allow"
 
     actions = [

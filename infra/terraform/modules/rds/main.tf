@@ -45,10 +45,10 @@ resource "aws_secretsmanager_secret" "rds_master_password" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-rds-master-password"
+      Name        = "${var.project_name}-${var.environment}-rds-master-password"
       Environment = var.environment
-      ManagedBy = "Terraform"
-      Purpose = "RDS Admin Access"
+      ManagedBy   = "Terraform"
+      Purpose     = "RDS Admin Access"
     }
   )
 }
@@ -80,9 +80,9 @@ resource "aws_db_subnet_group" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-db-subnet-group"
+      Name        = "${var.project_name}-${var.environment}-db-subnet-group"
       Environment = var.environment
-      ManagedBy = "Terraform"
+      ManagedBy   = "Terraform"
     }
   )
 }
@@ -102,9 +102,9 @@ resource "aws_security_group" "rds" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-rds-sg"
+      Name        = "${var.project_name}-${var.environment}-rds-sg"
       Environment = var.environment
-      ManagedBy = "Terraform"
+      ManagedBy   = "Terraform"
     }
   )
 }
@@ -119,10 +119,10 @@ resource "aws_vpc_security_group_ingress_rule" "mysql_from_backend" {
 
   # The ID of the security group where this ingress rule will be attached
   security_group_id = aws_security_group.rds.id
-  description = "Allow MySQL access from backend API"
-  from_port = 3306
-  to_port = 3306
-  ip_protocol = "tcp"
+  description       = "Allow MySQL access from backend API"
+  from_port         = 3306
+  to_port           = 3306
+  ip_protocol       = "tcp"
   # The destination security group that is allowed to receive traffic
   # var.allowed_security_group_ids[count.index] = each security group in the list
   referenced_security_group_id = var.allowed_security_group_ids[count.index]
@@ -130,7 +130,7 @@ resource "aws_vpc_security_group_ingress_rule" "mysql_from_backend" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-rds-ingress-mysql"
+      Name        = "${var.project_name}-${var.environment}-rds-ingress-mysql"
       Environment = var.environment
     }
   )
@@ -144,9 +144,9 @@ resource "aws_vpc_security_group_ingress_rule" "mysql_from_backend" {
 # Can be further restricted if needed
 resource "aws_vpc_security_group_egress_rule" "all_outbound" {
   security_group_id = aws_security_group.rds.id
-  description = "Allow HTTPS within VPC (for VPC endpoints)"
+  description       = "Allow HTTPS within VPC (for VPC endpoints)"
   # IPv4 CIDR block that outbound traffic is allowed to reach
-  cidr_ipv4 = var.vpc_cidr
+  cidr_ipv4   = var.vpc_cidr
   from_port   = 443
   to_port     = 443
   ip_protocol = "tcp"
@@ -154,7 +154,7 @@ resource "aws_vpc_security_group_egress_rule" "all_outbound" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-rds-egress-all"
+      Name        = "${var.project_name}-${var.environment}-rds-egress-all"
       Environment = var.environment
     }
   )
@@ -165,11 +165,11 @@ resource "aws_vpc_security_group_egress_rule" "all_outbound" {
 # ================================================================================
 
 resource "aws_db_instance" "main" {
-  identifier = "${var.project_name}-${var.environment}-rds-mysql"
-  engine = "mysql"
-  engine_version = var.engine_version
-  instance_class = var.instance_class
-  allocated_storage = var.allocated_storage
+  identifier            = "${var.project_name}-${var.environment}-rds-mysql"
+  engine                = "mysql"
+  engine_version        = var.engine_version
+  instance_class        = var.instance_class
+  allocated_storage     = var.allocated_storage
   max_allocated_storage = var.max_allocated_storage
 
   # storage_type = "gp3" means:
@@ -191,13 +191,13 @@ resource "aws_db_instance" "main" {
   #   - Faster database (no encryption overhead)
   #   - HUGE security risk! Data not protected if drive is stolen
   #   - Bad for compliance (HIPAA, PCI-DSS, etc.)
-  storage_encrypted = true
-  db_name = var.db_name
-  username = var.db_username
-  password = random_password.rds_master_password.result
-  db_subnet_group_name = aws_db_subnet_group.main.name
+  storage_encrypted      = true
+  db_name                = var.db_name
+  username               = var.db_username
+  password               = random_password.rds_master_password.result
+  db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
-  publicly_accessible = false
+  publicly_accessible    = false
 
   # iam_database_authentication_enabled = true means:
   #   - RDS accepts authentication tokens from AWS IAM
@@ -210,7 +210,7 @@ resource "aws_db_instance" "main" {
   #   - App suddenly can't connect (assumes IAM auth)
   iam_database_authentication_enabled = var.iam_database_authentication_enabled
 
-  multi_az = var.multi_az
+  multi_az                = var.multi_az
   backup_retention_period = var.backup_retention_period
 
   # backup_window = "03:00-04:00" means "Run backups between 3 AM and 4 AM UTC"
@@ -252,10 +252,10 @@ resource "aws_db_instance" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-${var.environment}-rds-mysql"
+      Name        = "${var.project_name}-${var.environment}-rds-mysql"
       Environment = var.environment
-      ManagedBy = "Terraform"
-      Purpose = "Application Database"
+      ManagedBy   = "Terraform"
+      Purpose     = "Application Database"
       CostControl = "Can be stopped/started via scripts"
     }
   )

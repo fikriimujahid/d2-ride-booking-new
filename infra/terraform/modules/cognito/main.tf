@@ -59,8 +59,8 @@
 #   - Password reset requests
 #   - Login history
 resource "aws_cognito_user_pool" "main" {
-  name = "${var.environment}-${var.project_name}"
-  username_attributes      = ["email"]
+  name                = "${var.environment}-${var.project_name}"
+  username_attributes = ["email"]
   # After a user registers, Cognito automatically sends a verification email
   auto_verified_attributes = ["email"]
 
@@ -69,11 +69,11 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   password_policy {
-    minimum_length = var.password_minimum_length
+    minimum_length    = var.password_minimum_length
     require_lowercase = true
     require_uppercase = true
-    require_numbers = true
-    require_symbols = true
+    require_numbers   = true
+    require_symbols   = true
     # NOTE:
     # This only applies to admin-created accounts.
     # Self-registered users create their own password immediately (no temporary password).
@@ -84,7 +84,7 @@ resource "aws_cognito_user_pool" "main" {
   # Custom attributes are PERMANENT! Once created, you CANNOT: Delete, Rename them, Change their data type (String → Number)
   # If you need to change it, you must delete and recreate the entire User Pool (losing all users).
   schema {
-    name = "role"
+    name                = "role"
     attribute_data_type = "String"
     # "mutable = true" just means it's POSSIBLE to change, not that anyone can change it.
     mutable = true
@@ -152,7 +152,7 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   deletion_protection = "INACTIVE"
-  mfa_configuration = "OPTIONAL"
+  mfa_configuration   = "OPTIONAL"
   software_token_mfa_configuration {
     enabled = true
   }
@@ -160,10 +160,10 @@ resource "aws_cognito_user_pool" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.environment}-${var.project_name}"
+      Name        = "${var.environment}-${var.project_name}"
       Environment = var.environment
-      Service = "cognito"
-      Purpose = "JWT-based authentication with role-based authorization"
+      Service     = "cognito"
+      Purpose     = "JWT-based authentication with role-based authorization"
     }
   )
 }

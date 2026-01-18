@@ -2,7 +2,7 @@
 # PROJECT IDENTIFICATION
 # ==============================================================================
 
-project = "d2-ride-booking-new"
+project    = "d2-ride-booking-new"
 aws_region = "ap-southeast-1"
 
 # ==============================================================================

@@ -20,7 +20,7 @@ resource "aws_iam_role" "backend_api" {
   # WHAT IF CHANGED: Remove this and EC2 can't use the role, your app breaks
   # DATA SOURCE: Defined in policies.tf - this references that definition
   assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
-  description = "IAM role for backend API (NestJS) - ${var.environment}"
+  description        = "IAM role for backend API (NestJS) - ${var.environment}"
 
   tags = merge(
     var.tags,
@@ -157,7 +157,7 @@ resource "aws_iam_role" "driver_web" {
   # WHAT IT SAYS: "EC2 service, you are TRUSTED to use this role"
   # WHAT IF CHANGED: Remove this and EC2 can't use the role, frontend breaks
   assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
-  description = "IAM role for driver web app (Next.js) - ${var.environment}"
+  description        = "IAM role for driver web app (Next.js) - ${var.environment}"
 
   tags = merge(
     var.tags,

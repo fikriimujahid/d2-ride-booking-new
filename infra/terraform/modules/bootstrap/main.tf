@@ -78,7 +78,7 @@ locals {
   allowed_subs = [
     # DEV BRANCH: When code is pushed to the 'dev' branch
     "repo:${var.github_repo}:ref:refs/heads/dev",
-    
+
     # DEV ENVIRONMENT: When manually deploying to 'dev' environment
     # (GitHub allows you to define "environments" like dev, staging, prod)
     "repo:${var.github_repo}:environment:dev",
@@ -90,7 +90,7 @@ locals {
 
     # MAIN BRANCH: When code is pushed to the 'main' branch (production)
     "repo:${var.github_repo}:ref:refs/heads/main",
-    
+
     # MAIN ENVIRONMENT: Alternative way to deploy to production
     "repo:${var.github_repo}:environment:main",
 
@@ -112,17 +112,17 @@ resource "aws_iam_role" "github_actions_deploy_role" {
   assume_role_policy = jsonencode({
     # Version: This is always "2012-10-17" for IAM policies
     Version = "2012-10-17"
-    
+
     # Statement: A list of permission rules (we have one rule here)
     Statement = [{
       Effect = "Allow"
-      
+
       # Principal: WHO is allowed to assume this role?
       # "Federated" means "an external identity provider"
       Principal = {
         Federated = var.github_oidc_provider_arn
       }
-      
+
       # Action: WHAT action is being allowed?
       # "AssumeRoleWithWebIdentity" means "log in using a web-based identity token"
       Action = "sts:AssumeRoleWithWebIdentity"
@@ -131,7 +131,7 @@ resource "aws_iam_role" "github_actions_deploy_role" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
-        
+
         StringLike = {
           # SECURITY IMPORTANCE:
           # Without this condition, ANY GitHub repository could use this role!
@@ -157,8 +157,8 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
   description = "Policy for github-actions-deploy-role"
 
   policy = jsonencode({
-    Version = "2012-10-17"  # Standard IAM policy version (don't change)
-    
+    Version = "2012-10-17" # Standard IAM policy version (don't change)
+
     # Statement: Array of permission rules
     # Each {} block below is one permission rule
     Statement = [
@@ -168,12 +168,12 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
       {
         Sid    = "EC2DeploymentAccess"
         Effect = "Allow"
-        
+
         # ACTIONS: What EC2 operations are allowed?
         Action = [
-          "ec2:DescribeInstances",  # See list of running servers
-          "ec2:DescribeTags",       # View tags/labels on servers
-          "ec2:CreateTags"          # Add/update tags on servers
+          "ec2:DescribeInstances", # See list of running servers
+          "ec2:DescribeTags",      # View tags/labels on servers
+          "ec2:CreateTags"         # Add/update tags on servers
         ]
 
         # ⚠️ SECURITY NOTE:
@@ -182,38 +182,38 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         # "arn:aws:ec2:us-east-1:123456789:instance/i-xxxxx"
         Resource = "*"
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #2: S3 Artifacts Upload
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
         Sid    = "S3ArtifactsUpload"
         Effect = "Allow"
-        
+
         # ACTIONS: What S3 operations are allowed?
         Action = [
-          "s3:PutObject",    # Upload files to S3
-          "s3:GetObject",    # Download files from S3
-          "s3:ListBucket"    # View list of files in bucket
+          "s3:PutObject", # Upload files to S3
+          "s3:GetObject", # Download files from S3
+          "s3:ListBucket" # View list of files in bucket
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-deployments-*",      # The bucket itself
-          "arn:aws:s3:::${var.project}-deployments-*/*"     # All files in bucket (/* = all objects)
+          "arn:aws:s3:::${var.project}-deployments-*",  # The bucket itself
+          "arn:aws:s3:::${var.project}-deployments-*/*" # All files in bucket (/* = all objects)
         ]
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #3: S3 Bootstrap Artifacts - Objects
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
         Sid    = "S3BootstrapArtifactsObjects"
         Effect = "Allow"
-        
+
         Action = [
-          "s3:PutObject",              # Upload files
-          "s3:GetObject",              # Download files
-          "s3:AbortMultipartUpload"    # Cancel large file uploads if they fail
+          "s3:PutObject",           # Upload files
+          "s3:GetObject",           # Download files
+          "s3:AbortMultipartUpload" # Cancel large file uploads if they fail
         ]
 
         Resource = "arn:aws:s3:::${var.project}-*-bootstrap/artifacts/*"
@@ -224,9 +224,9 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
       {
         Sid    = "S3BootstrapArtifactsList"
         Effect = "Allow"
-        
+
         Action = [
-          "s3:ListBucket"  # View the list of files in the bucket
+          "s3:ListBucket" # View the list of files in the bucket
         ]
 
         # ListBucket is a BUCKET-level operation, so it needs a separate rule
@@ -234,13 +234,13 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Condition = {
           StringLike = {
             "s3:prefix" = [
-              "artifacts/*",  # Files inside artifacts/ folder
-              "artifacts"     # The artifacts folder itself
+              "artifacts/*", # Files inside artifacts/ folder
+              "artifacts"    # The artifacts folder itself
             ]
           }
         }
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #5: S3 Static Site Admin - Buckets
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -249,41 +249,41 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Effect = "Allow"
 
         Action = [
-          "s3:ListBucket",        # View files in the bucket
-          "s3:GetBucketLocation"  # Find out which AWS region the bucket is in
+          "s3:ListBucket",       # View files in the bucket
+          "s3:GetBucketLocation" # Find out which AWS region the bucket is in
         ]
 
         Resource = [
           "arn:aws:s3:::${var.project}-*-admin-*"
         ]
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #6: S3 Static Site Admin - Objects
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
         Sid    = "S3StaticSiteAdminObjects"
         Effect = "Allow"
-        
+
         Action = [
-          "s3:PutObject",              # Upload new/updated files
-          "s3:GetObject",              # Download files
-          "s3:DeleteObject",           # Delete old files
-          "s3:AbortMultipartUpload"    # Cancel failed large uploads
+          "s3:PutObject",           # Upload new/updated files
+          "s3:GetObject",           # Download files
+          "s3:DeleteObject",        # Delete old files
+          "s3:AbortMultipartUpload" # Cancel failed large uploads
         ]
-        
+
         Resource = [
           "arn:aws:s3:::${var.project}-*-admin-*/*"
         ]
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #7: S3 Static Site Driver - Buckets
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
         Sid    = "S3StaticSiteDriverBuckets"
         Effect = "Allow"
-      
+
         Action = [
           "s3:ListBucket",
           "s3:GetBucketLocation"
@@ -293,7 +293,7 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "arn:aws:s3:::${var.project}-*-driver-*"
         ]
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #8: S3 Static Site Driver - Objects
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -307,7 +307,7 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "s3:DeleteObject",
           "s3:AbortMultipartUpload"
         ]
-        
+
         Resource = [
           "arn:aws:s3:::${var.project}-*-driver-*/*"
         ]
@@ -322,10 +322,10 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Action = [
           # Get metric data (e.g., CPU usage over the last hour)
           "cloudwatch:GetMetricData",
-          
+
           # Search through log files (e.g., find all error messages)
           "logs:FilterLogEvents",
-          
+
           # Read raw log entries (e.g., see the last 100 log lines)
           "logs:GetLogEvents"
         ]
@@ -338,7 +338,7 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         #
         Resource = "*"
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #10: SSM Send Command to Tagged Instances
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -356,7 +356,7 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           }
         }
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #11: SSM Send Command Document
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -369,11 +369,11 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
 
         Resource = [
-          "arn:aws:ssm:*::document/AWS-RunShellScript",   # AWS public document
-          "arn:aws:ssm:*:*:document/AWS-RunShellScript"   # Account-specific reference
+          "arn:aws:ssm:*::document/AWS-RunShellScript", # AWS public document
+          "arn:aws:ssm:*:*:document/AWS-RunShellScript" # Account-specific reference
         ]
       },
-      
+
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #12: SSM Get Command Invocation
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -384,14 +384,14 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Action = [
           # Get detailed results of a specific command
           "ssm:GetCommandInvocation",
-          
+
           # List all command invocations (history of commands run)
           "ssm:ListCommandInvocations",
-          
+
           # List all commands (summary view)
           "ssm:ListCommands"
         ]
-        
+
         # 🔒 SECURITY NOTE:
         # This is read-only (just viewing status), so "*" is generally safe.
         # However, command output might contain sensitive data (passwords, keys).
