@@ -1,7 +1,6 @@
 # ========================================
-# Security Groups Module - Input Variables
+# REQUIRED VARIABLES (must be provided)
 # ========================================
-# Purpose: Define variables for network security groups
 
 variable "environment" {
   description = "Environment name (dev, staging, prod)"
@@ -11,7 +10,6 @@ variable "environment" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "ridebooking"
 }
 
 variable "vpc_id" {
@@ -28,4 +26,10 @@ variable "tags" {
   description = "Common tags for all security group resources"
   type        = map(string)
   default     = {}
+}
+
+variable "rds_security_group_id" {
+  description = "Security group ID of the RDS instance (from RDS module)"
+  type        = string
+  default     = "" # Empty string when RDS not yet created
 }

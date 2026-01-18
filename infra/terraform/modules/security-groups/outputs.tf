@@ -1,8 +1,8 @@
 # ========================================
-# Security Groups Module - Outputs
+# INDIVIDUAL SECURITY GROUP ID EXPORTS
 # ========================================
-# Purpose: Export security group IDs for use in other modules
-
+# These are simple, straightforward exports:
+# For each security group, we export its ID so other resources can use it
 output "alb_security_group_id" {
   description = "Security group ID for Application Load Balancer"
   value       = aws_security_group.alb.id
@@ -18,17 +18,16 @@ output "driver_web_security_group_id" {
   value       = aws_security_group.driver_web.id
 }
 
-output "rds_security_group_id" {
-  description = "Security group ID for RDS MySQL"
-  value       = aws_security_group.rds.id
-}
+# ========================================
+# COMPREHENSIVE SECURITY GROUP SUMMARY
+# ========================================
+# This output provides a human-readable overview of all security groups
+# and their rules. Useful for documentation and debugging.
 
-# ----------------------------------------
-# Security Group Summary
-# ----------------------------------------
 output "security_group_summary" {
   description = "Summary of all security groups"
   value = {
+    # SECTION: ALB SECURITY GROUP SUMMARY
     alb = {
       id   = aws_security_group.alb.id
       name = aws_security_group.alb.name
@@ -37,6 +36,8 @@ output "security_group_summary" {
         "HTTP from 0.0.0.0/0"
       ]
     }
+
+    # SECTION: BACKEND API SECURITY GROUP SUMMARY
     backend_api = {
       id   = aws_security_group.backend_api.id
       name = aws_security_group.backend_api.name
@@ -49,6 +50,8 @@ output "security_group_summary" {
         "MySQL to RDS"
       ]
     }
+
+    # SECTION: DRIVER WEB SECURITY GROUP SUMMARY
     driver_web = {
       id   = aws_security_group.driver_web.id
       name = aws_security_group.driver_web.name
@@ -58,13 +61,6 @@ output "security_group_summary" {
       outbound = [
         "HTTPS within VPC CIDR",
         "HTTP within VPC CIDR"
-      ]
-    }
-    rds = {
-      id   = aws_security_group.rds.id
-      name = aws_security_group.rds.name
-      inbound = [
-        "MySQL from backend API"
       ]
     }
   }
