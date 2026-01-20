@@ -80,6 +80,9 @@ module "vpc" {
   # can be accessed from the internet (with proper security group rules)
   public_subnet_cidr = var.public_subnet_cidr
 
+  # Optional secondary public subnet to satisfy ALB multi-AZ requirement
+  public_subnet_cidr_secondary = var.public_subnet_cidr_secondary
+
   # A section of your VPC where resources CANNOT be accessed from internet.
   # Resources here can only talk to other resources in the VPC (or through NAT)
   private_subnet_cidr = var.private_subnet_cidr
@@ -153,7 +156,59 @@ module "security_groups" {
   vpc_id   = module.vpc.vpc_id
   vpc_cidr = var.vpc_cidr
 
+  # Toggle: allow direct VPC access when ALB disabled (DEV convenience)
+  enable_alb = var.enable_alb
+
+  # When NAT is enabled, instances can reach the public internet (outbound only).
+  # Security group egress rules still need to allow it.
+  enable_nat_gateway = var.enable_nat_gateway
+
   tags = var.tags
+}
+
+# ================================================================================
+# VPC ENDPOINTS (SSM) - REQUIRED FOR PRIVATE EC2 WITHOUT INTERNET/NAT
+# ================================================================================
+module "ssm_vpc_endpoints" {
+  count  = var.enable_ssm_vpc_endpoints ? 1 : 0
+  source = "../../modules/vpc-endpoints"
+
+  environment  = var.environment
+  project_name = var.project_name
+  aws_region   = var.aws_region
+
+  vpc_id     = module.vpc.vpc_id
+  vpc_cidr   = var.vpc_cidr
+  subnet_ids = module.vpc.private_subnet_ids
+
+  tags = var.tags
+}
+
+# ==============================================================================
+# BASTION HOST (OPTIONAL) - SAFE RDS ACCESS PATH
+# ==============================================================================
+# Default access method is SSM Session Manager (no inbound ports required).
+# Optional SSH can be enabled via variables if you prefer.
+module "bastion" {
+  count  = var.enable_bastion ? 1 : 0
+  source = "../../modules/bastion"
+
+  environment  = var.environment
+  project_name = var.project_name
+
+  vpc_id   = module.vpc.vpc_id
+  vpc_cidr = var.vpc_cidr
+
+  # Place bastion in the public subnet and give it a public IP.
+  subnet_id         = module.vpc.public_subnet_id
+  instance_type     = var.bastion_instance_type
+  enable_ssh        = var.bastion_enable_ssh
+  ssh_allowed_cidrs = var.bastion_ssh_allowed_cidrs
+  key_name          = var.bastion_key_name
+
+  tags = var.tags
+
+  depends_on = [module.vpc]
 }
 
 # ================================================================================
@@ -198,7 +253,51 @@ module "rds" {
   # -----------------------------------------------------------------------------
   # SECURITY CONFIGURATION
   # -----------------------------------------------------------------------------
-  allowed_security_group_ids = [module.security_groups.backend_api_security_group_id]
+  allowed_security_group_ids = concat(
+    [module.security_groups.backend_api_security_group_id],
+    var.enable_bastion ? [module.bastion[0].security_group_id] : []
+  )
 
   tags = var.tags
+}
+
+# ================================================================================
+# EC2 MODULE - BACKEND API SERVER (DEV, SINGLE AZ)
+# ================================================================================
+module "ec2_backend" {
+  count = var.enable_ec2_backend ? 1 : 0
+
+  source = "../../modules/ec2"
+
+  environment           = var.environment
+  project_name          = var.project_name
+  subnet_id             = module.vpc.private_subnet_id
+  security_group_id     = module.security_groups.backend_api_security_group_id
+  instance_profile_name = module.iam.backend_api_instance_profile_name
+  instance_type         = var.backend_instance_type
+  root_volume_size      = var.backend_root_volume_size
+  tags                  = var.tags
+
+  depends_on = [module.vpc]
+}
+
+# ================================================================================
+# OPTIONAL ALB MODULE - ENABLED VIA TOGGLE (DEFAULT OFF TO SAVE COST)
+# ================================================================================
+module "alb" {
+  count = var.enable_alb && var.enable_ec2_backend ? 1 : 0
+
+  source = "../../modules/alb"
+
+  environment           = var.environment
+  project_name          = var.project_name
+  vpc_id                = module.vpc.vpc_id
+  public_subnet_ids     = module.vpc.public_subnet_ids
+  alb_security_group_id = module.security_groups.alb_security_group_id
+  target_instance_id    = module.ec2_backend[0].instance_id
+  target_port           = 3000
+  health_check_path     = "/health"
+  domain_name           = var.domain_name
+  hosted_zone_id        = var.route53_zone_id
+  tags                  = var.tags
 }
