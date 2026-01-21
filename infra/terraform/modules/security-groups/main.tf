@@ -324,6 +324,8 @@ resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_https" {
 
 # When NAT gateway is enabled, allow the backend instance to reach the public
 # internet over HTTPS for OS updates and package installs.
+#trivy:ignore:AVD-AWS-0104
+#tfsec:ignore:AVD-AWS-0104
 resource "aws_vpc_security_group_egress_rule" "backend_api_internet_https" {
   count             = var.enable_nat_gateway ? 1 : 0
   security_group_id = aws_security_group.backend_api.id
