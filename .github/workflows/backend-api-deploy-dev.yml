@@ -65,6 +65,7 @@ jobs:
           mkdir -p artifact
           cp -r apps/backend-api/dist artifact/
           cp -r apps/backend-api/node_modules artifact/
+          cp apps/backend-api/ecosystem.config.js artifact/
           cp apps/backend-api/package*.json artifact/
 
           tar -czf backend-api-$TIMESTAMP.tar.gz -C artifact .
@@ -138,6 +139,8 @@ jobs:
               "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
 
               "cd $APP_ROOT/current",
+
+              "test -f ecosystem.config.js || (echo 'Missing ecosystem.config.js in release artifact' >&2; exit 1)",
 
               "pm2 startOrReload ecosystem.config.js --env development",
               "pm2 save",

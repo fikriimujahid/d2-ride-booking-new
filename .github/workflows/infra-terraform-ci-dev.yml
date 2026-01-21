@@ -5,7 +5,7 @@
 # This ensures infrastructure changes are tested before merging
 # ============================================================================
 
-name: ci-infra-terraform
+name: Infra Terraform CI (Dev)
 
 # ============================================================================
 # TRIGGER CONFIGURATION
