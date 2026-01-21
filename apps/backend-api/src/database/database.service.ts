@@ -95,8 +95,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const rejectRaw = this.config.get<string>('DB_SSL_REJECT_UNAUTHORIZED');
     const rejectUnauthorized = rejectRaw ? rejectRaw.toLowerCase() !== 'false' : true;
 
-    const caPath = (this.config.get<string>('DB_SSL_CA_PATH') ?? '').trim();
-    const caB64 = (this.config.get<string>('DB_SSL_CA_B64') ?? '').trim();
+    const rawCaPath = (this.config.get<string>('DB_SSL_CA_PATH') ?? '').trim();
+    const rawCaB64 = (this.config.get<string>('DB_SSL_CA_B64') ?? '').trim();
+
+    // Guard against accidentally setting these vars as booleans in CI/CD (e.g. "true").
+    // In that case, treat it as "not provided" and fall back to system CA bundle.
+    const caPath = rawCaPath && rawCaPath !== 'true' && rawCaPath !== 'false' ? rawCaPath : '';
+    const caB64 = rawCaB64 && rawCaB64 !== 'true' && rawCaB64 !== 'false' ? rawCaB64 : '';
 
     let ca: string | undefined;
     if (caPath) {
