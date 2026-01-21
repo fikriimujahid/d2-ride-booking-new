@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Signer } from '@aws-sdk/rds-signer';
 import { createPool, Pool, PoolConnection } from 'mysql2/promise';
+import { readFileSync } from 'node:fs';
 import { JsonLogger } from '../logging/json-logger.service';
 
 /**
@@ -32,11 +33,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const region = this.config.get<string>('AWS_REGION') ?? '';
     const password = this.config.get<string>('DB_PASSWORD');
 
+    const sslConfig = this.buildSslConfig();
+
     // Local dev: use password-based auth if DB_PASSWORD is set
     // Production: use IAM auth (no password)
     const useIamAuth = !password;
 
     if (useIamAuth) {
+      if (!sslConfig) {
+        throw new Error('DB_SSL=false is not allowed when using IAM DB authentication (TLS is required)');
+      }
       // signer produces short-lived auth tokens tied to IAM identity of the EC2 role
       this.signer = new Signer({
         hostname: host,
@@ -50,7 +56,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         port,
         user,
         database,
-        ssl: { rejectUnauthorized: true }, // enforce TLS; Amazon CA is trusted by Node runtime
+        ssl: sslConfig, // TLS required for IAM auth
         authPlugins: {
           // mysql_clear_password is used by IAM auth. The plugin is invoked per connection,
           // so a new token is generated automatically before MySQL handshakes, keeping it fresh.
@@ -66,11 +72,57 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         port,
         user,
         password,
-        database
+        database,
+        ...(sslConfig ? { ssl: sslConfig } : {})
       });
 
       this.logger.log('Database pool initialized with password auth (local dev)', { host, port, database });
     }
+  }
+
+  private buildSslConfig(): { rejectUnauthorized: boolean; ca?: string } | undefined {
+    // Default: enable TLS with strict verification.
+    // If you see "self-signed certificate in certificate chain", either:
+    // - provide the correct CA bundle via DB_SSL_CA_PATH / DB_SSL_CA_B64, or
+    // - (dev only) set DB_SSL_REJECT_UNAUTHORIZED=false to bypass verification.
+
+    const sslEnabledRaw = this.config.get<string>('DB_SSL');
+    const sslEnabled = sslEnabledRaw ? sslEnabledRaw.toLowerCase() !== 'false' : true;
+    if (!sslEnabled) {
+      return undefined;
+    }
+
+    const rejectRaw = this.config.get<string>('DB_SSL_REJECT_UNAUTHORIZED');
+    const rejectUnauthorized = rejectRaw ? rejectRaw.toLowerCase() !== 'false' : true;
+
+    const caPath = this.config.get<string>('DB_SSL_CA_PATH');
+    const caB64 = this.config.get<string>('DB_SSL_CA_B64');
+
+    let ca: string | undefined;
+    if (caPath) {
+      try {
+        ca = readFileSync(caPath, 'utf8');
+      } catch (error) {
+        this.logger.warn('Failed to read DB SSL CA file; continuing without custom CA', {
+          caPath,
+          error: (error as Error).message
+        });
+      }
+    } else if (caB64) {
+      try {
+        ca = Buffer.from(caB64, 'base64').toString('utf8');
+      } catch (error) {
+        this.logger.warn('Failed to decode DB_SSL_CA_B64; continuing without custom CA', {
+          error: (error as Error).message
+        });
+      }
+    }
+
+    if (!rejectUnauthorized) {
+      this.logger.warn('DB TLS verification is disabled (DB_SSL_REJECT_UNAUTHORIZED=false)');
+    }
+
+    return ca ? { rejectUnauthorized, ca } : { rejectUnauthorized };
   }
 
   async onModuleDestroy() {
