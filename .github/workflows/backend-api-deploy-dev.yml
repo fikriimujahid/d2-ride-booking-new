@@ -43,12 +43,15 @@ jobs:
       # ------------------------------------------------------------
       - name: Install dependencies
         working-directory: apps/backend-api
-        run: |
-          npm ci --omit=dev
+        run: npm ci
 
       - name: Build NestJS backend api
         working-directory: apps/backend-api
         run: npm run build
+
+      - name: Prune devDependencies (artifact only)
+        working-directory: apps/backend-api
+        run: npm prune --omit=dev
 
       # ------------------------------------------------------------
       # 4. Package immutable artifact
