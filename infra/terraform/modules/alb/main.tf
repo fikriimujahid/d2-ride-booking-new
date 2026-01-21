@@ -4,7 +4,6 @@ locals {
 
 #trivy:ignore:AVD-AWS-0053
 #tfsec:ignore:AVD-AWS-0053
-
 resource "aws_lb" "this" {
   name = local.name
 

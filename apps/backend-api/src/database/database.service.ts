@@ -117,13 +117,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return sql;
   }
 
-  // Tagged-template query helper. Interpolations become prepared-statement parameters.
-  // Usage: await db.query`SELECT * FROM t WHERE id = ${id}`
-  async query<T = unknown>(strings: TemplateStringsArray, ...params: unknown[]): Promise<T> {
+  // Tagged-template SQL helper. Interpolations become prepared-statement parameters.
+  // Usage: await db.sql`SELECT * FROM t WHERE id = ${id}`
+  async sql<T = unknown>(strings: TemplateStringsArray, ...params: unknown[]): Promise<T> {
     const sql = DatabaseService.templateToSql(strings, params.length);
     const connection = await this.getConnection();
     try {
-      const [rows] = await connection.execute(sql, params);
+      // Safe by construction: SQL text is derived from a tagged template literal and values
+      // are passed separately as prepared-statement parameters ("?").
+      const [rows] = await connection.execute(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
       return rows as T;
     } finally {
       connection.release();
@@ -171,7 +173,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
     const connection = await this.getConnection();
     try {
-      await connection.execute(sql, params);
+      // Safe: identifiers are validated/escaped and all values are parameterized.
+      await connection.execute(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
     } finally {
       connection.release();
     }

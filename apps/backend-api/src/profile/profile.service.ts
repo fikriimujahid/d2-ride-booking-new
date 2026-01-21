@@ -39,7 +39,7 @@ export class ProfileService {
     const role = dto.role ?? 'PASSENGER';
 
     try {
-      await this.db.query`
+      await this.db.sql`
         INSERT INTO profiles (id, user_id, email, phone_number, full_name, role)
         VALUES (${id}, ${userId}, ${dto.email}, ${dto.phone_number ?? null}, ${dto.full_name ?? null}, ${role})
       `;
@@ -61,7 +61,7 @@ export class ProfileService {
   }
 
   async findByUserId(userId: string): Promise<Profile> {
-    const rows = await this.db.query<RowDataPacket[]>`SELECT * FROM profiles WHERE user_id = ${userId} LIMIT 1`;
+    const rows = await this.db.sql<RowDataPacket[]>`SELECT * FROM profiles WHERE user_id = ${userId} LIMIT 1`;
 
     if (!rows || rows.length === 0) {
       throw new NotFoundException('Profile not found');
@@ -113,7 +113,7 @@ export class ProfileService {
   async delete(userId: string): Promise<void> {
     await this.findByUserId(userId);
 
-    await this.db.query`DELETE FROM profiles WHERE user_id = ${userId}`;
+    await this.db.sql`DELETE FROM profiles WHERE user_id = ${userId}`;
 
     this.logger.log('Profile deleted from DB', { userId });
   }
