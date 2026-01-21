@@ -232,6 +232,10 @@ jobs:
           
           # Directory to scan
           scan-ref: 'infra/terraform'
+          skip-files: |
+            **/plan.tfplan
+            **/plan.txt
+            **/plan.json
           
           # Don't show progress bar (cleaner CI logs)
           hide-progress: true
