@@ -114,6 +114,15 @@ export DB_NAME="ridebooking"
 export DB_USER="app_user"
 export AWS_REGION="ap-southeast-1"
 
+# Recommended for AWS (IAM DB Authentication)
+export DB_IAM_AUTH="true"
+
+# IAM auth requires TLS
+export DB_SSL="true"
+export DB_SSL_REJECT_UNAUTHORIZED="true"
+# Optional: point to the AWS RDS global CA bundle PEM
+# export DB_SSL_CA_PATH="/opt/d2/shared/aws-rds-global-bundle.pem"
+
 # Note: No DB_PASSWORD - app generates IAM tokens
 ```
 

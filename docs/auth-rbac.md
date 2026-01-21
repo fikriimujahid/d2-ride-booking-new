@@ -279,15 +279,22 @@ COGNITO_REGION=ap-southeast-1
 COGNITO_JWKS_URI=https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_XXXXX/.well-known/jwks.json
 COGNITO_ISSUER=https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_XXXXX
 
-# Database (from Secrets Manager)
-DB_HOST=<retrieved-from-secrets-manager>
+# Database (RDS MySQL)
+# In AWS, prefer IAM DB Authentication (no static DB password).
+DB_HOST=<rds-endpoint>
 DB_PORT=3306
-DB_USERNAME=<retrieved-from-secrets-manager>
-DB_PASSWORD=<retrieved-from-secrets-manager>
-DB_DATABASE=ridebooking
+DB_NAME=ridebooking
+DB_USER=app_user
+
+# Recommended on AWS
+DB_IAM_AUTH=true
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=true
+# Optional (if your instance/Node trust store doesn't validate the RDS cert chain)
+# DB_SSL_CA_PATH=/opt/d2/shared/aws-rds-global-bundle.pem
 ```
 
-**Note:** Backend retrieves DB credentials from AWS Secrets Manager using IAM role, not from `.env`.
+**Note:** With IAM DB authentication, the backend generates short-lived auth tokens using the EC2 instance role.
 
 ### Frontend (React/Next.js) - `.env.local`
 

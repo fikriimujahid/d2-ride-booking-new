@@ -30,18 +30,27 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
 
     const port = Number(this.config.get<number>('DB_PORT') ?? 3306);
-    const region = this.config.get<string>('AWS_REGION') ?? '';
+    const region = (this.config.get<string>('AWS_REGION') ?? '').trim();
     const password = this.config.get<string>('DB_PASSWORD');
+
+    const iamAuthRaw = (this.config.get<string>('DB_IAM_AUTH') ?? '').trim().toLowerCase();
+    const iamAuthForced = iamAuthRaw === 'true' || iamAuthRaw === '1' || iamAuthRaw === 'yes';
 
     const sslConfig = this.buildSslConfig();
 
     // Local dev: use password-based auth if DB_PASSWORD is set
     // Production: use IAM auth (no password)
-    const useIamAuth = !password;
+    const useIamAuth = iamAuthForced || !password;
 
     if (useIamAuth) {
+      if (!region) {
+        throw new Error('AWS_REGION is required when using IAM DB authentication');
+      }
       if (!sslConfig) {
         throw new Error('DB_SSL=false is not allowed when using IAM DB authentication (TLS is required)');
+      }
+      if (password && iamAuthForced) {
+        this.logger.warn('DB_PASSWORD is set but DB_IAM_AUTH=true; ignoring DB_PASSWORD and using IAM auth');
       }
       // signer produces short-lived auth tokens tied to IAM identity of the EC2 role
       this.signer = new Signer({
@@ -64,7 +73,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         }
       });
 
-      this.logger.log('Database pool initialized with IAM auth token flow', { host, port, database });
+      this.logger.log('Database pool initialized with IAM auth token flow', {
+        host,
+        port,
+        database,
+        tls: true
+      });
     } else {
       // Password-based auth for local development
       this.pool = createPool({
@@ -166,9 +180,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!this.signer) {
       throw new Error('RDS signer not initialized');
     }
-    const token = await this.signer.getAuthToken();
-    this.logger.log('Generated IAM DB auth token', { expiresInMinutes: 15 });
-    return token;
+    return this.signer.getAuthToken();
   }
 
   async getConnection(): Promise<PoolConnection> {
