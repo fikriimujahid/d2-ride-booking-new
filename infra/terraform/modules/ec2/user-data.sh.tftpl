@@ -5,30 +5,20 @@ dnf update -y
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs amazon-cloudwatch-agent
 
-mkdir -p /opt/backend-api
-mkdir -p /var/log
+# PM2 is used by the GitHub Actions + SSM deployment workflow.
+# Install it globally so operators can run `pm2 list` / `pm2 logs`.
+npm install -g pm2
 
-touch /var/log/backend-api.log
+# App root used by CI deploy workflow (.github/workflows/backend-api-deploy-dev.yml)
+APP_ROOT=/opt/apps/backend-api
+mkdir -p "$APP_ROOT" "$APP_ROOT/releases"
 
-cat >/etc/systemd/system/backend-api.service <<'EOF'
-[Unit]
-Description=Backend API (NestJS)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-WorkingDirectory=/opt/backend-api
-# CI/SSM deploy will place dist/ and .env. Service remains disabled until deploy.
-ExecStart=/bin/sh -c '/usr/bin/node /opt/backend-api/dist/main.js >> /var/log/backend-api.log 2>&1'
-EnvironmentFile=/opt/backend-api/.env
-Restart=on-failure
-RestartSec=5
-StandardOutput=append:/var/log/backend-api.log
-StandardError=append:/var/log/backend-api.log
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# Ensure pm2 can restart apps on reboot (for root, because SSM deploy runs as root).
+if [ ! -f /etc/systemd/system/pm2-root.service ]; then
+  pm2 startup systemd -u root --hp /root
+fi
+systemctl enable pm2-root || true
+systemctl start pm2-root || true
 
 cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
 {
@@ -37,9 +27,15 @@ cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
       "files": {
         "collect_list": [
           {
-            "file_path": "/var/log/backend-api.log",
+            "file_path": "/root/.pm2/logs/backend-api-out.log",
             "log_group_name": "${log_group_name}",
             "log_stream_name": "{instance_id}",
+            "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
+          },
+          {
+            "file_path": "/root/.pm2/logs/backend-api-error.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}-error",
             "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
           }
         ]
@@ -51,4 +47,4 @@ EOF
 
 systemctl daemon-reload
 systemctl restart amazon-cloudwatch-agent || systemctl start amazon-cloudwatch-agent
-# Service intentionally not enabled by user-data to avoid crash-loop before deploy.
+# Backend process is started by CI deploy via PM2.
