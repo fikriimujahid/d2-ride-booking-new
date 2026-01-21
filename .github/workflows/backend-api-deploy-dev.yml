@@ -147,7 +147,7 @@ jobs:
               "export HOME=/root",
               "export PM2_HOME=/root/.pm2",
 
-              "pm2 startOrReload ecosystem.config.js --env development --update-env",
+              "pm2 startOrReload ecosystem.config.js --env development --update-env --only backend-api",
               "pm2 save",
 
               "# Keep only last 3 releases (by RELEASE_ID name, not mtime)",

@@ -153,6 +153,56 @@ Checks:
 - Security groups / ALB target group / Nginx (if any)
 - Bind address inside NestJS (should listen on `0.0.0.0`, not only localhost)
 
+### E) `EADDRINUSE: address already in use :::3000`
+
+Symptoms:
+- PM2 logs show: `Error: listen EADDRINUSE: address already in use :::3000`
+
+What it means:
+- Something is already listening on port `3000` (often a previous Node process or a second PM2 “home” starting another copy).
+
+Steps (EC2):
+
+1) Find which process owns port 3000:
+
+```bash
+ss -lntp | grep ':3000' || true
+```
+
+2) Check PM2 under the *deploy* PM2 home:
+
+```bash
+export PM2_HOME=/root/.pm2
+pm2 list
+pm2 describe backend-api || true
+```
+
+3) Also check if another PM2 home exists (common when earlier deploys used `/etc/.pm2`):
+
+```bash
+export PM2_HOME=/etc/.pm2
+pm2 list
+```
+
+4) Fix: stop/delete the duplicate (pick the PM2 home that actually owns the running process):
+
+```bash
+# For the correct PM2_HOME (either /root/.pm2 or /etc/.pm2)
+pm2 delete backend-api || true
+pm2 save || true
+```
+
+5) If the listener is *not* managed by PM2 (still showing in `ss`), kill that PID:
+
+```bash
+# Replace <PID> from the ss output
+kill <PID>
+sleep 1
+ss -lntp | grep ':3000' || true
+```
+
+After the port is free, redeploy (or start via PM2) again.
+
 ## 5) Debugging from GitHub Actions / SSM
 
 If a deploy step fails in Actions, the most useful output is the SSM invocation stdout/stderr.
