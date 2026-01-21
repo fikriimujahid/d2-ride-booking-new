@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Signer } from '@aws-sdk/rds-signer';
 import { createPool, Pool, PoolConnection } from 'mysql2/promise';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { JsonLogger } from '../logging/json-logger.service';
 
 /**
@@ -95,8 +95,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const rejectRaw = this.config.get<string>('DB_SSL_REJECT_UNAUTHORIZED');
     const rejectUnauthorized = rejectRaw ? rejectRaw.toLowerCase() !== 'false' : true;
 
-    const caPath = this.config.get<string>('DB_SSL_CA_PATH');
-    const caB64 = this.config.get<string>('DB_SSL_CA_B64');
+    const caPath = (this.config.get<string>('DB_SSL_CA_PATH') ?? '').trim();
+    const caB64 = (this.config.get<string>('DB_SSL_CA_B64') ?? '').trim();
 
     let ca: string | undefined;
     if (caPath) {
@@ -115,6 +115,32 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn('Failed to decode DB_SSL_CA_B64; continuing without custom CA', {
           error: (error as Error).message
         });
+      }
+    } else {
+      // If no explicit CA is provided, try the system CA bundle.
+      // This helps in environments where the DB uses a CA not present in Node's bundled CA set.
+      const systemCaCandidates = [
+        // Amazon Linux 2023
+        '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
+        // Amazon Linux 2 / RHEL family
+        '/etc/pki/tls/certs/ca-bundle.crt',
+        // Debian/Ubuntu
+        '/etc/ssl/certs/ca-certificates.crt',
+        // Some distros
+        '/etc/ssl/certs/ca-bundle.crt'
+      ];
+
+      const systemCaPath = systemCaCandidates.find((p) => existsSync(p));
+      if (systemCaPath) {
+        try {
+          ca = readFileSync(systemCaPath, 'utf8');
+          this.logger.log('Using system CA bundle for DB TLS', { systemCaPath });
+        } catch (error) {
+          this.logger.warn('Failed to read system CA bundle; continuing without custom CA', {
+            systemCaPath,
+            error: (error as Error).message
+          });
+        }
       }
     }
 
