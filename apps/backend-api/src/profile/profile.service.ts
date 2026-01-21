@@ -39,11 +39,10 @@ export class ProfileService {
     const role = dto.role ?? 'PASSENGER';
 
     try {
-      await this.db.query(
-        `INSERT INTO profiles (id, user_id, email, phone_number, full_name, role)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, userId, dto.email, dto.phone_number ?? null, dto.full_name ?? null, role]
-      );
+      await this.db.query`
+        INSERT INTO profiles (id, user_id, email, phone_number, full_name, role)
+        VALUES (${id}, ${userId}, ${dto.email}, ${dto.phone_number ?? null}, ${dto.full_name ?? null}, ${role})
+      `;
 
       this.logger.log('Profile created in DB', { id, userId });
 
@@ -62,10 +61,7 @@ export class ProfileService {
   }
 
   async findByUserId(userId: string): Promise<Profile> {
-    const rows = await this.db.query<RowDataPacket[]>(
-      'SELECT * FROM profiles WHERE user_id = ? LIMIT 1',
-      [userId]
-    );
+    const rows = await this.db.query<RowDataPacket[]>`SELECT * FROM profiles WHERE user_id = ${userId} LIMIT 1`;
 
     if (!rows || rows.length === 0) {
       throw new NotFoundException('Profile not found');
@@ -77,33 +73,26 @@ export class ProfileService {
   async update(userId: string, dto: UpdateProfileDto): Promise<Profile> {
     const existing = await this.findByUserId(userId);
 
-    const updates: string[] = [];
-    const values: unknown[] = [];
-
+    const updates: Record<string, unknown> = {};
     if (dto.email !== undefined) {
-      updates.push('email = ?');
-      values.push(dto.email);
+      updates.email = dto.email;
     }
     if (dto.phone_number !== undefined) {
-      updates.push('phone_number = ?');
-      values.push(dto.phone_number);
+      updates.phone_number = dto.phone_number;
     }
     if (dto.full_name !== undefined) {
-      updates.push('full_name = ?');
-      values.push(dto.full_name);
+      updates.full_name = dto.full_name;
     }
     if (dto.role !== undefined) {
-      updates.push('role = ?');
-      values.push(dto.role);
+      updates.role = dto.role;
     }
 
-    if (updates.length === 0) {
-      return existing;
-    }
-
-    values.push(userId);
-
-    await this.db.query(`UPDATE profiles SET ${updates.join(', ')} WHERE user_id = ?`, values);
+    await this.db.updateByKey('profiles', 'user_id', userId, updates, [
+      'email',
+      'phone_number',
+      'full_name',
+      'role'
+    ]);
 
     this.logger.log('Profile updated in DB', { userId });
 
@@ -124,7 +113,7 @@ export class ProfileService {
   async delete(userId: string): Promise<void> {
     await this.findByUserId(userId);
 
-    await this.db.query('DELETE FROM profiles WHERE user_id = ?', [userId]);
+    await this.db.query`DELETE FROM profiles WHERE user_id = ${userId}`;
 
     this.logger.log('Profile deleted from DB', { userId });
   }

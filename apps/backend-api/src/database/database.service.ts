@@ -14,6 +14,7 @@ import { JsonLogger } from '../logging/json-logger.service';
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private pool?: Pool;
   private signer?: Signer;
+  private static readonly identifierPattern = /^[A-Za-z0-9_]+$/;
 
   constructor(private readonly config: ConfigService, private readonly logger: JsonLogger) {}
 
@@ -94,12 +95,83 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.pool.getConnection();
   }
 
-  // Helper to run safe queries when business logic arrives; keeps future code DRY.
-  async query<T = unknown>(sql: string, params?: unknown[]): Promise<T> {
+  private static assertSafeIdentifier(identifier: string) {
+    if (!DatabaseService.identifierPattern.test(identifier) || identifier.includes('`')) {
+      throw new Error(`Unsafe SQL identifier: ${identifier}`);
+    }
+  }
+
+  private static toBacktickedIdentifier(identifier: string): string {
+    DatabaseService.assertSafeIdentifier(identifier);
+    return `\`${identifier}\``;
+  }
+
+  private static templateToSql(strings: TemplateStringsArray, valueCount: number): string {
+    let sql = '';
+    for (let i = 0; i < strings.length; i++) {
+      sql += strings[i];
+      if (i < valueCount) {
+        sql += '?';
+      }
+    }
+    return sql;
+  }
+
+  // Tagged-template query helper. Interpolations become prepared-statement parameters.
+  // Usage: await db.query`SELECT * FROM t WHERE id = ${id}`
+  async query<T = unknown>(strings: TemplateStringsArray, ...params: unknown[]): Promise<T> {
+    const sql = DatabaseService.templateToSql(strings, params.length);
     const connection = await this.getConnection();
     try {
-      const [rows] = await connection.query(sql, params);
+      const [rows] = await connection.execute(sql, params);
       return rows as T;
+    } finally {
+      connection.release();
+    }
+  }
+
+  // Safe UPDATE builder that validates identifiers and always parameterizes values.
+  async updateByKey(
+    table: string,
+    keyColumn: string,
+    keyValue: unknown,
+    updates: Record<string, unknown>,
+    allowedColumns: readonly string[]
+  ): Promise<void> {
+    const updateEntries = Object.entries(updates).filter(([, v]) => v !== undefined);
+    if (updateEntries.length === 0) {
+      return;
+    }
+
+    DatabaseService.assertSafeIdentifier(table);
+    DatabaseService.assertSafeIdentifier(keyColumn);
+
+    const allowed = new Set(allowedColumns);
+    for (const col of allowedColumns) {
+      DatabaseService.assertSafeIdentifier(col);
+    }
+
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const [column, value] of updateEntries) {
+      if (!allowed.has(column)) {
+        throw new Error(`Disallowed update column: ${column}`);
+      }
+      DatabaseService.assertSafeIdentifier(column);
+      setClauses.push(`${DatabaseService.toBacktickedIdentifier(column)} = ?`);
+      params.push(value);
+    }
+
+    params.push(keyValue);
+
+    const sql = `UPDATE ${DatabaseService.toBacktickedIdentifier(table)} SET ${setClauses.join(
+      ', '
+    )} WHERE ${DatabaseService.toBacktickedIdentifier(keyColumn)} = ?`;
+
+    const connection = await this.getConnection();
+    try {
+      await connection.execute(sql, params);
     } finally {
       connection.release();
     }
