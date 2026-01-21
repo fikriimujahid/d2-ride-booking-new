@@ -232,10 +232,10 @@ jobs:
           
           # Directory to scan
           scan-ref: 'infra/terraform'
-          skip-files: |
-            **/plan.tfplan
-            **/plan.txt
-            **/plan.json
+          # NOTE: This must be a single line.
+          # The trivy-action writes inputs to a shell env file internally; multiline values can turn into
+          # stray lines that the shell tries to execute (e.g., "**/plan.txt: No such file or directory").
+          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json'
           
           # Don't show progress bar (cleaner CI logs)
           hide-progress: true
