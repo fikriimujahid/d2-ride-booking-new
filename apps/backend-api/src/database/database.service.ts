@@ -125,7 +125,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     try {
       // Safe by construction: SQL text is derived from a tagged template literal and values
       // are passed separately as prepared-statement parameters ("?").
-      const [rows] = await connection.execute(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
+      const [rows] = await connection.query(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
       return rows as T;
     } finally {
       connection.release();
@@ -174,7 +174,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const connection = await this.getConnection();
     try {
       // Safe: identifiers are validated/escaped and all values are parameterized.
-      await connection.execute(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
+      await connection.query(sql, params); // nosemgrep: javascript.lang.security.audit.sqli.node-mysql-sqli.node-mysql-sqli
     } finally {
       connection.release();
     }
