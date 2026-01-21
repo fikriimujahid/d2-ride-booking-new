@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [dev]
     paths:
-      - apps/backend-api/**
+      #- apps/backend-api/**
+      - apps/web-admin/**
 
 permissions:
   contents: read
