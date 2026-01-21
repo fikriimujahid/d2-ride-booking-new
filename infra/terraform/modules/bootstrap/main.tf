@@ -192,13 +192,13 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
 
         # ACTIONS: What S3 operations are allowed?
         Action = [
-          "s3:PutObject",                # Upload files to S3
-          "s3:GetObject",                # Download files from S3
-          "s3:ListBucket",               # View list of files in bucket
-          "s3:GetBucketLocation",        # Needed by aws cli
-          "s3:AbortMultipartUpload",     # Needed for multipart uploads
-          "s3:ListBucketMultipartUploads",# Needed for multipart uploads
-          "s3:ListMultipartUploadParts"  # Needed for multipart uploads
+          "s3:PutObject",                  # Upload files to S3
+          "s3:GetObject",                  # Download files from S3
+          "s3:ListBucket",                 # View list of files in bucket
+          "s3:GetBucketLocation",          # Needed by aws cli
+          "s3:AbortMultipartUpload",       # Needed for multipart uploads
+          "s3:ListBucketMultipartUploads", # Needed for multipart uploads
+          "s3:ListMultipartUploadParts"    # Needed for multipart uploads
         ]
 
         Resource = [
