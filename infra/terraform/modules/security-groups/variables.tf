@@ -33,3 +33,15 @@ variable "rds_security_group_id" {
   type        = string
   default     = "" # Empty string when RDS not yet created
 }
+
+variable "enable_alb" {
+  description = "Whether ALB is enabled; when false, allow direct DEV HTTP"
+  type        = bool
+  default     = false
+}
+
+variable "enable_nat_gateway" {
+  description = "Whether NAT gateway is enabled; when true, allow outbound HTTPS to the internet (via NAT)"
+  type        = bool
+  default     = false
+}

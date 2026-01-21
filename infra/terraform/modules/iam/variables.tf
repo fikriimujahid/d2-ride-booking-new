@@ -43,6 +43,15 @@ variable "aws_account_id" {
 }
 
 # ========================================
+# DEPLOYMENT ARTIFACTS (S3)
+# ========================================
+variable "deployment_artifacts_bucket_arn" {
+  description = "Optional S3 bucket ARN that holds deployment artifacts (EC2 needs GetObject for SSM-driven deploys)"
+  type        = string
+  default     = ""
+}
+
+# ========================================
 # TAGGING VARIABLES
 # ========================================
 variable "tags" {

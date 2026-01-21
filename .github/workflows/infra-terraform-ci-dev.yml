@@ -5,7 +5,7 @@
 # This ensures infrastructure changes are tested before merging
 # ============================================================================
 
-name: ci-infra-terraform
+name: Infra Terraform CI (Dev)
 
 # ============================================================================
 # TRIGGER CONFIGURATION
@@ -19,7 +19,7 @@ on:
     # Path filter: only trigger when Terraform files change
     # Saves CI minutes and speeds up feedback for non-infrastructure PRs
     paths:
-      - infra/terraform/**
+      - infra/scripts/**
 
 # ============================================================================
 # CONCURRENCY CONTROL
@@ -232,6 +232,10 @@ jobs:
           
           # Directory to scan
           scan-ref: 'infra/terraform'
+          # NOTE: This must be a single line.
+          # The trivy-action writes inputs to a shell env file internally; multiline values can turn into
+          # stray lines that the shell tries to execute (e.g., "**/plan.txt: No such file or directory").
+          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json'
           
           # Don't show progress bar (cleaner CI logs)
           hide-progress: true

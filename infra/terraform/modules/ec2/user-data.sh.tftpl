@@ -1,0 +1,50 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf update -y
+curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+dnf install -y nodejs amazon-cloudwatch-agent
+
+# PM2 is used by the GitHub Actions + SSM deployment workflow.
+# Install it globally so operators can run `pm2 list` / `pm2 logs`.
+npm install -g pm2
+
+# App root used by CI deploy workflow (.github/workflows/backend-api-deploy-dev.yml)
+APP_ROOT=/opt/apps/backend-api
+mkdir -p "$APP_ROOT" "$APP_ROOT/releases"
+
+# Ensure pm2 can restart apps on reboot (for root, because SSM deploy runs as root).
+if [ ! -f /etc/systemd/system/pm2-root.service ]; then
+  pm2 startup systemd -u root --hp /root
+fi
+systemctl enable pm2-root || true
+systemctl start pm2-root || true
+
+cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/root/.pm2/logs/backend-api-out.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}",
+            "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
+          },
+          {
+            "file_path": "/root/.pm2/logs/backend-api-error.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}-error",
+            "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+systemctl daemon-reload
+systemctl restart amazon-cloudwatch-agent || systemctl start amazon-cloudwatch-agent
+# Backend process is started by CI deploy via PM2.

@@ -14,6 +14,13 @@ variable "public_subnet_cidr" {
   description = "CIDR block for the public subnet"
 }
 
+# Optional secondary public subnet to support internet-facing ALB across two AZs.
+variable "public_subnet_cidr_secondary" {
+  type        = string
+  description = "CIDR block for an optional secondary public subnet"
+  default     = null
+}
+
 # ----------------------------------------------------------------------------
 # PRIVATE SUBNET CIDR BLOCK
 # ----------------------------------------------------------------------------

@@ -1,0 +1,83 @@
+import { ConsoleLogger, Injectable, LogLevel } from '@nestjs/common';
+
+/**
+ * Simple JSON logger to keep CloudWatch Logs parseable without extra agents.
+ * Writes to stdout with {level,msg,context,...meta} shape.
+ */
+@Injectable()
+export class JsonLogger extends ConsoleLogger {
+  constructor(context?: string) {
+    super(context ?? 'backend-api');
+  }
+
+  private normalizeError(error: unknown) {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      };
+    }
+
+    if (typeof error === 'object' && error !== null) {
+      // Best-effort serialization for non-Error throwables.
+      try {
+        return JSON.parse(JSON.stringify(error)) as Record<string, unknown>;
+      } catch {
+        return { value: String(error) };
+      }
+    }
+
+    return { value: String(error) };
+  }
+
+  private normalizeMessage(message: unknown) {
+    if (message instanceof Error) {
+      return { msg: message.message, error: this.normalizeError(message) };
+    }
+    return { msg: message };
+  }
+
+  log(message: unknown, context?: string): void;
+  log(message: unknown, meta?: Record<string, unknown>): void;
+  log(message: unknown, metaOrContext?: string | Record<string, unknown>) {
+    const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
+    const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
+    super.log(
+      JSON.stringify({ level: 'info', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
+    );
+  }
+
+  warn(message: unknown, context?: string): void;
+  warn(message: unknown, meta?: Record<string, unknown>): void;
+  warn(message: unknown, metaOrContext?: string | Record<string, unknown>) {
+    const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
+    const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
+    super.warn(
+      JSON.stringify({ level: 'warn', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
+    );
+  }
+
+  error(message: unknown, stack?: string, context?: string): void;
+  error(message: unknown, meta?: Record<string, unknown>): void;
+  error(message: unknown, stackOrMeta?: string | Record<string, unknown>, maybeContext?: string) {
+    const stack = typeof stackOrMeta === 'string' ? stackOrMeta : undefined;
+    const context = typeof maybeContext === 'string' ? maybeContext : this.context;
+    const meta = typeof stackOrMeta === 'string' ? {} : (stackOrMeta ?? {});
+
+    super.error(
+      JSON.stringify({
+        level: 'error',
+        context,
+        ...this.normalizeMessage(message),
+        ...(stack ? { stack } : {}),
+        ...(meta ?? {})
+      })
+    );
+  }
+
+  /** Keeps Nest from downgrading log levels when bufferLogs=true. */
+  setLogLevels(levels: LogLevel[]) {
+    super.setLogLevels(levels);
+  }
+}

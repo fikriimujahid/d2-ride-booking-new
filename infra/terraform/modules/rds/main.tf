@@ -72,7 +72,7 @@ resource "aws_secretsmanager_secret_version" "rds_master_password" {
 # Places RDS in private subnets with no internet access
 # Ensures database is isolated and accessible only via VPC
 resource "aws_db_subnet_group" "main" {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name        = "${var.project_name}-${var.environment}"
   description = "DB subnet group for ${var.project_name} ${var.environment} - private subnets only"
   # subnet_ids: List of PRIVATE subnet IDs where RDS can be deployed
   subnet_ids = var.private_subnet_ids
@@ -93,7 +93,7 @@ resource "aws_db_subnet_group" "main" {
 
 # No CIDR-based access - security group reference only
 resource "aws_security_group" "rds" {
-  name_prefix = "${var.project_name}-${var.environment}-rds"
+  name        = "${var.project_name}-${var.environment}-rds"
   description = "Security group for RDS MySQL instance - allows access only from backend API"
 
   # The RDS will live in this VPC, and this security group protects it

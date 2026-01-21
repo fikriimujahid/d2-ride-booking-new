@@ -271,6 +271,25 @@ resource "aws_vpc_security_group_ingress_rule" "backend_api_from_alb" {
   )
 }
 
+# DEV convenience: when ALB is disabled, allow VPC-local HTTP so engineers can
+# reach the backend via SSM port forwarding without opening the internet.
+resource "aws_vpc_security_group_ingress_rule" "backend_api_from_vpc" {
+  count             = var.enable_alb ? 0 : 1
+  security_group_id = aws_security_group.backend_api.id
+  description       = "Allow HTTP from VPC CIDR when ALB is off"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 3000
+  to_port           = 3000
+  ip_protocol       = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-backend-api-from-vpc"
+    }
+  )
+}
+
 # ========================================
 # Backend API OUTBOUND RULES
 # ========================================
@@ -303,6 +322,28 @@ resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_https" {
   )
 }
 
+# When NAT gateway is enabled, allow the backend instance to reach the public
+# internet over HTTPS for OS updates and package installs.
+#trivy:ignore:AVD-AWS-0104
+#tfsec:ignore:AVD-AWS-0104
+resource "aws_vpc_security_group_egress_rule" "backend_api_internet_https" {
+  count             = var.enable_nat_gateway ? 1 : 0
+  security_group_id = aws_security_group.backend_api.id
+
+  description = "Allow HTTPS to internet via NAT"
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-backend-api-https-internet"
+    }
+  )
+}
+
 # ----------------------------------------
 # Backend API Outbound Rule #2: HTTP within VPC
 # ----------------------------------------
@@ -324,6 +365,32 @@ resource "aws_vpc_security_group_egress_rule" "backend_api_vpc_http" {
     var.tags,
     {
       Name = "${var.environment}-${var.project_name}-backend-api-http-vpc"
+    }
+  )
+}
+
+# ----------------------------------------
+# Backend API Outbound Rule #3: MySQL within VPC (to reach RDS)
+# ----------------------------------------
+# NOTE:
+# This module uses explicit (locked-down) egress rules. If we only allow egress
+# by referencing the RDS security group, we'd need to pass the RDS SG ID into
+# this module. In this stack, that would create a dependency cycle.
+#
+# So we allow MySQL (3306) to the VPC CIDR. RDS itself is still protected by its
+# own security group ingress rules (SG reference), so this is safe for DEV.
+resource "aws_vpc_security_group_egress_rule" "backend_api_mysql_vpc" {
+  security_group_id = aws_security_group.backend_api.id
+  description       = "Allow MySQL within VPC (for RDS)"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 3306
+  to_port           = 3306
+  ip_protocol       = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-backend-api-mysql-vpc"
     }
   )
 }

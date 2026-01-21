@@ -169,6 +169,25 @@ resource "aws_subnet" "public" {
 }
 
 # ----------------------------------------------------------------------------
+# SECONDARY PUBLIC SUBNET (OPTIONAL)
+# ----------------------------------------------------------------------------
+# Provides the second AZ required for internet-facing ALB while keeping costs low.
+resource "aws_subnet" "public_secondary" {
+  count = var.public_subnet_cidr_secondary != null && var.availability_zone_secondary != null ? 1 : 0
+
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.public_subnet_cidr_secondary
+  availability_zone = var.availability_zone_secondary
+
+  map_public_ip_on_launch = false
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-${local.env}-public-${var.availability_zone_secondary}"
+    Tier = "public"
+  })
+}
+
+# ----------------------------------------------------------------------------
 # PRIVATE SUBNET
 # ----------------------------------------------------------------------------
 # *** WHAT IS A PRIVATE SUBNET? ***
@@ -306,6 +325,14 @@ resource "aws_route_table_association" "public" {
   # route_table_id: Which route table to use for this subnet
   # We're connecting the public subnet to the public route table
   # This gives the public subnet access to the internet
+  route_table_id = aws_route_table.public.id
+}
+
+# Optional association for the secondary public subnet (required when ALB is enabled).
+resource "aws_route_table_association" "public_secondary" {
+  count = var.public_subnet_cidr_secondary != null && var.availability_zone_secondary != null ? 1 : 0
+
+  subnet_id      = aws_subnet.public_secondary[0].id
   route_table_id = aws_route_table.public.id
 }
 

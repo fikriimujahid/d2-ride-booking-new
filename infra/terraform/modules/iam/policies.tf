@@ -166,6 +166,60 @@ data "aws_iam_policy_document" "backend_api" {
       ]
     }
   }
+
+  # ========================================
+  # STATEMENT 5: S3 - Read deployment artifacts (CONDITIONAL)
+  # ========================================
+  # Used by SSM deploy commands that run on the instance and download release tarballs.
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ReadDeploymentArtifacts"
+      effect = "Allow"
+
+      actions = [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ]
+
+      resources = [
+        # Backward-compatible (older prefix)
+        "${var.deployment_artifacts_bucket_arn}/backend/*",
+        # Current workflow prefix (.github/workflows/backend-api-deploy-dev.yml)
+        "${var.deployment_artifacts_bucket_arn}/apps/backend/*"
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ListDeploymentArtifacts"
+      effect = "Allow"
+
+      actions = [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ]
+
+      resources = [
+        var.deployment_artifacts_bucket_arn
+      ]
+
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values = [
+          # Backward-compatible (older prefix)
+          "backend/*",
+          "backend",
+          # Current workflow prefix
+          "apps/backend/*",
+          "apps/backend"
+        ]
+      }
+    }
+  }
 }
 
 # ========================================
