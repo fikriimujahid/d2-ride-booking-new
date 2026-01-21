@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf update -y
+curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+dnf install -y nodejs amazon-cloudwatch-agent
+
+mkdir -p /opt/backend-api
+mkdir -p /var/log
+
+touch /var/log/backend-api.log
+
+cat >/etc/systemd/system/backend-api.service <<'EOF'
+[Unit]
+Description=Backend API (NestJS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/backend-api
+# CI/SSM deploy will place dist/ and .env. Service remains disabled until deploy.
+ExecStart=/bin/sh -c '/usr/bin/node /opt/backend-api/dist/main.js >> /var/log/backend-api.log 2>&1'
+EnvironmentFile=/opt/backend-api/.env
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/backend-api.log
+StandardError=append:/var/log/backend-api.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/backend-api.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}",
+            "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+systemctl daemon-reload
+systemctl restart amazon-cloudwatch-agent || systemctl start amazon-cloudwatch-agent
+# Service intentionally not enabled by user-data to avoid crash-loop before deploy.

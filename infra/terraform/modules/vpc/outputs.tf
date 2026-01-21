@@ -16,6 +16,20 @@ output "public_subnet_id" {
   value = aws_subnet.public.id
 }
 
+# Optional secondary public subnet ID for multi-AZ ALB.
+output "public_subnet_id_secondary" {
+  description = "Secondary public subnet ID (null when not created)"
+  value       = try(aws_subnet.public_secondary[0].id, null)
+}
+
+output "public_subnet_ids" {
+  description = "List of public subnet IDs (primary + optional secondary)"
+  value = compact([
+    aws_subnet.public.id,
+    try(aws_subnet.public_secondary[0].id, null)
+  ])
+}
+
 # ----------------------------------------------------------------------------
 # PRIVATE SUBNET ID
 # ----------------------------------------------------------------------------

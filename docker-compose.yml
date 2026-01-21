@@ -1,0 +1,75 @@
+# ============================================================================
+# DOCKER COMPOSE - LOCAL DEVELOPMENT ENVIRONMENT
+# ============================================================================
+# Purpose: Run MySQL locally for backend-api development
+# Usage:
+#   docker-compose up -d          # Start services in background
+#   docker-compose down           # Stop services
+#   docker-compose logs -f mysql  # View logs
+#   docker-compose ps             # Check status
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # MYSQL DATABASE (matches AWS RDS configuration)
+  # ==========================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: d2-ridebooking-mysql
+    restart: unless-stopped
+    
+    # Environment variables for MySQL initialization
+    environment:
+      # Root password (for admin tasks)
+      MYSQL_ROOT_PASSWORD: root_password_change_me
+      
+      # Auto-create database on first startup
+      MYSQL_DATABASE: ridebooking
+      
+      # Create app user with password (local dev only; prod uses IAM auth)
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: local_dev_password_change_me
+    
+    # Port mapping: host:container
+    # Access MySQL from host at localhost:3306
+    ports:
+      - "3306:3306"
+    
+    # Persistent volume for database data
+    # Data survives container restarts and removals
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Auto-run migrations on startup (optional)
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    
+    # MySQL configuration
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    
+    # Health check to ensure MySQL is ready
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password_change_me"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    # Resource limits (adjust based on your machine)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+# Named volumes for data persistence
+volumes:
+  mysql_data:
+    driver: local
+    name: d2-ridebooking-mysql-data
+
+# Network configuration (default bridge network is sufficient for local dev)
+networks:
+  default:
+    name: d2-ridebooking-network

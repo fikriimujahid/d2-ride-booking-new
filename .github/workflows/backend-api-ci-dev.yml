@@ -1,0 +1,134 @@
+﻿name: Backend API CI (Dev)
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - apps/backend-api/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-dev-${{ github.ref }}
+  cancel-in-progress: true
+  
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/backend-api
+
+    steps:
+      # ======================================================================
+      # CHECKOUT CODE
+      # ======================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ======================================================================
+      # SETUP NODE.JS ENVIRONMENT (with Caching)
+      # ======================================================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/backend-api/package-lock.json
+
+      # ======================================================================
+      # INSTALL DEPENDENCIES (Reproducible)
+      # ======================================================================
+      - name: Install dependencies
+        # npm ci = Clean Install (deletes node_modules, installs from lock file)
+        run: npm ci
+
+      # ======================================================================
+      # CODE QUALITY - LINTING (ESLint)
+      # ======================================================================
+      - name: ESLint
+        # Run ESLint to check code style and catch common errors
+        run: npm run lint
+      
+      # ======================================================================
+      # CODE QUALITY - TYPE CHECKING (TypeScript)
+      # ======================================================================
+      - name: TypeScript type check
+        # catches type errors that ESLint might miss
+        run: npm run typecheck
+      
+      # ======================================================================
+      # AUTOMATED TESTING
+      # ======================================================================
+      - name: Unit tests
+        # ensures code changes don't break existing functionality
+        run: npm run test
+
+      # ======================================================================
+      # BUILD VERIFICATION
+      # ======================================================================
+      - name: Build
+        # catches build errors early (missing imports, TS errors). If it doesn't build, it can't deploy
+        run: npm run build
+
+      # ======================================================================
+      # DEPENDENCY VULNERABILITIES (npm audit)
+      # ======================================================================
+      - name: Dependency scan (npm audit)
+        # catches vulnerable packages (e.g., old lodash with prototype pollution)
+        # --production = only check production dependencies (not devDependencies)
+        # --audit-level=high = fail only on HIGH or CRITICAL vulnerabilities
+        run: npm audit --production --audit-level=high
+        
+      # ======================================================================
+      # SECURITY - SECRET DETECTION (Gitleaks)
+      # ======================================================================
+      - name: Secret scan (gitleaks)
+        # Scan git commits for accidentally committed secrets
+        # only scan PR commits (not entire history)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: >-
+            detect
+            --redact
+            -v
+            --exit-code=2
+            --report-format=sarif
+            --report-path=results.sarif
+            --log-level=debug
+            --log-opts=--no-merges --first-parent
+            ${{ github.event.pull_request.base.sha }}^..${{ github.event.pull_request.head.sha }}
+            --
+            apps/backend-api
+        env:
+          # Token needed to access PR metadata
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      # ======================================================================
+      # SECURITY - STATIC APPLICATION SECURITY TESTING (Semgrep)
+      # ======================================================================
+      - name: Setup Python (for Semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Semgrep (SAST)
+        # Scans code for security vulnerabilities and anti-patterns
+        run: |
+          # Upgrade pip to latest (best practice)
+          python -m pip install --upgrade pip
+          
+          # Install Semgrep security scanner
+          pip install semgrep
+          
+          # Run Semgrep with multiple rule sets
+          semgrep \
+          --config p/default \
+          --config p/nodejs \
+          --config p/typescript \
+          --error \
+          --metrics=off

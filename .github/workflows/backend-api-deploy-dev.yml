@@ -1,0 +1,145 @@
+﻿name: Backend API Deploy (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - apps/backend-api/**
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: backend-api-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy NestJS Backend API to EC2 (Dev)
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      # ------------------------------------------------------------
+      # 1. Checkout mono-repo
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------
+      # 2. Setup Node.js
+      # ------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/backend-api/package-lock.json
+
+      # ------------------------------------------------------------
+      # 3. Install deps & build (CI is the build authority)
+      # ------------------------------------------------------------
+      - name: Install dependencies
+        working-directory: apps/backend-api
+        run: |
+          npm ci --omit=dev
+
+      - name: Build NestJS backend api
+        working-directory: apps/backend-api
+        run: npm run build
+
+      # ------------------------------------------------------------
+      # 4. Package immutable artifact
+      # ------------------------------------------------------------
+      - name: Package deployment artifact
+        run: |
+          set -e
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "RELEASE_ID=$TIMESTAMP" >> $GITHUB_ENV
+
+          mkdir -p artifact
+          cp -r apps/backend-api/dist artifact/
+          cp -r apps/backend-api/node_modules artifact/
+          cp apps/backend-api/package*.json artifact/
+
+          tar -czf backend-api-$TIMESTAMP.tar.gz -C artifact .
+
+          # Generate checksum for integrity verification
+          sha256sum backend-api-$TIMESTAMP.tar.gz > backend-api-$TIMESTAMP.sha256
+
+      # ------------------------------------------------------------
+      # 5. Configure AWS credentials (OIDC)
+      # ------------------------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ------------------------------------------------------------
+      # 6. Upload artifact + checksum to S3
+      # ------------------------------------------------------------
+      - name: Upload artifact to S3
+        run: |
+          aws s3 cp backend-api-${{ env.RELEASE_ID }}.tar.gz \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ env.RELEASE_ID }}.tar.gz
+
+          aws s3 cp backend-api-${{ env.RELEASE_ID }}.sha256 \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ env.RELEASE_ID }}.sha256
+
+      # ------------------------------------------------------------
+      # 7. Deploy on EC2 via SSM (no SSH)
+      # ------------------------------------------------------------
+      - name: Deploy to EC2 using SSM
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ vars.BACKEND_EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy backend release ${{ env.RELEASE_ID }}" \
+            --parameters 'commands=[
+              "set -e",
+              "APP_ROOT=${{ vars.APP_ROOT }}",
+              "RELEASE_ID=${{ env.RELEASE_ID }}",
+
+              "mkdir -p $APP_ROOT/releases/$RELEASE_ID",
+              "cd /tmp",
+
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.tar.gz backend.tar.gz",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.sha256 backend.sha256",
+
+              "sha256sum -c backend.sha256",
+
+              "tar -xzf backend.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
+
+              "# Generate runtime .env (mirrors apps/backend-api/.env.example)",
+              "cat > $APP_ROOT/releases/$RELEASE_ID/.env <<EOF",
+              "NODE_ENV=dev",
+              "PORT=3000",
+              "",
+              "AWS_REGION=${{ vars.AWS_REGION }}",
+              "",
+              "COGNITO_USER_POOL_ID=${{ secrets.COGNITO_USER_POOL_ID }}",
+              "COGNITO_CLIENT_ID=${{ secrets.COGNITO_CLIENT_ID }}",
+              "",
+              "DB_HOST=${{ secrets.DB_HOST }}",
+              "DB_PORT=${{ secrets.DB_PORT }}",
+              "DB_NAME=${{ secrets.DB_NAME }}",
+              "DB_USER=${{ secrets.DB_USER }}",
+              "EOF",
+              "chmod 600 $APP_ROOT/releases/$RELEASE_ID/.env",
+
+              "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
+
+              "cd $APP_ROOT/current",
+
+              "pm2 startOrReload ecosystem.config.js --env development",
+              "pm2 save",
+
+              "# Keep only last 3 releases",
+              "ls -dt $APP_ROOT/releases/* | tail -n +4 | xargs rm -rf",
+
+              "echo Deployment successful: $RELEASE_ID"
+            ]' \
+            --output text

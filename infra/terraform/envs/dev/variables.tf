@@ -58,6 +58,11 @@ variable "public_subnet_cidr" {
   description = "CIDR block for the DEV public subnet"
 }
 
+variable "public_subnet_cidr_secondary" {
+  type        = string
+  description = "CIDR block for the DEV secondary public subnet (for ALB multi-AZ)"
+}
+
 # --------------------------------------------------------------------------------
 # PRIVATE SUBNET CIDR
 # --------------------------------------------------------------------------------
@@ -99,6 +104,58 @@ variable "enable_nat_gateway" {
   default     = false
 }
 
+# Optional ALB toggle (default off to avoid hourly charges in DEV)
+variable "enable_alb" {
+  type        = bool
+  description = "Enable internet-facing ALB for backend"
+  default     = false
+}
+
+variable "enable_ec2_backend" {
+  type        = bool
+  description = "Enable internet-facing EC2 backend"
+  default     = false
+}
+
+variable "enable_ssm_vpc_endpoints" {
+  type        = bool
+  description = "Enable Interface VPC endpoints for SSM (ssm/ec2messages/ssmmessages) so private instances can use Session Manager without NAT"
+  default     = true
+}
+
+# ================================================================================
+# BASTION SETTINGS (OPTIONAL)
+# ================================================================================
+variable "enable_bastion" {
+  type        = bool
+  description = "Enable a bastion host (recommended access via SSM port forwarding)"
+  default     = false
+}
+
+variable "bastion_instance_type" {
+  type        = string
+  description = "Bastion EC2 instance type"
+  default     = "t3.micro"
+}
+
+variable "bastion_enable_ssh" {
+  type        = bool
+  description = "Enable inbound SSH (22) to bastion (prefer SSM if possible)"
+  default     = false
+}
+
+variable "bastion_ssh_allowed_cidrs" {
+  type        = list(string)
+  description = "CIDR blocks allowed to SSH to the bastion when bastion_enable_ssh=true"
+  default     = []
+}
+
+variable "bastion_key_name" {
+  type        = string
+  description = "Optional EC2 key pair name for bastion SSH"
+  default     = null
+}
+
 # ================================================================================
 # COGNITO CONFIGURATION VARIABLES
 # ================================================================================
@@ -110,6 +167,12 @@ variable "enable_nat_gateway" {
 variable "domain_name" {
   type        = string
   description = "Domain name for project (e.g., d2.fikri.dev)"
+}
+
+variable "route53_zone_id" {
+  type        = string
+  description = "Hosted zone ID for Route53 (blank to skip alias creation)"
+  default     = ""
 }
 
 # --------------------------------------------------------------------------------
@@ -201,4 +264,19 @@ variable "rds_engine_version" {
   type        = string
   description = "MySQL engine version"
   default     = "8.0"
+}
+
+# ================================================================================
+# BACKEND EC2 SETTINGS (PHASE 5)
+# ================================================================================
+variable "backend_instance_type" {
+  type        = string
+  description = "Backend EC2 instance type (keep micro for DEV cost)"
+  default     = "t3.micro"
+}
+
+variable "backend_root_volume_size" {
+  type        = number
+  description = "Root EBS volume size in GB"
+  default     = 16
 }
