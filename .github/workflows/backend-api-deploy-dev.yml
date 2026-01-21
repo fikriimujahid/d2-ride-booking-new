@@ -89,10 +89,10 @@ jobs:
       - name: Upload artifact to S3
         run: |
           aws s3 cp backend-api-${{ steps.artifact.outputs.release_id }}.tar.gz \
-            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-${{ steps.artifact.outputs.release_id }}.tar.gz
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ steps.artifact.outputs.release_id }}.tar.gz
 
           aws s3 cp backend-api-${{ steps.artifact.outputs.release_id }}.sha256 \
-            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-${{ steps.artifact.outputs.release_id }}.sha256
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ steps.artifact.outputs.release_id }}.sha256
 
       # ------------------------------------------------------------
       # 7. Deploy on EC2 via SSM (no SSH)
@@ -114,8 +114,8 @@ jobs:
               "mkdir -p $APP_ROOT/shared",
               "cd /tmp",
 
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-$RELEASE_ID.tar.gz backend-api-$RELEASE_ID.tar.gz",
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-$RELEASE_ID.sha256 backend-api-$RELEASE_ID.sha256",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.tar.gz backend-api-$RELEASE_ID.tar.gz",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.sha256 backend-api-$RELEASE_ID.sha256",
 
               "sha256sum -c backend-api-$RELEASE_ID.sha256",
 
