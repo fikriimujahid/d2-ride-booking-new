@@ -122,7 +122,7 @@ export class ProfileService {
   }
 
   async delete(userId: string): Promise<void> {
-    const existing = await this.findByUserId(userId);
+    await this.findByUserId(userId);
 
     await this.db.query('DELETE FROM profiles WHERE user_id = ?', [userId]);
 

@@ -268,6 +268,15 @@ output "environment_summary" {
       }
     }
 
+    deployments = {
+      s3 = {
+        bucket_name = module.deployments_bucket.bucket_name
+        bucket_arn  = module.deployments_bucket.bucket_arn
+        # Used by GitHub Actions workflow (.github/workflows/backend-api-deploy-dev.yml)
+        github_actions_var_name = "S3_BUCKET"
+      }
+    }
+
     auth = {
       cognito = {
         user_pool_id       = module.cognito.user_pool_id

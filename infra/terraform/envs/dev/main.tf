@@ -61,6 +61,22 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # ================================================================================
+# DEPLOYMENT ARTIFACTS BUCKET (S3)
+# ================================================================================
+module "deployments_bucket" {
+  source = "../../modules/deployments-bucket"
+
+  environment    = var.environment
+  project_name   = var.project_name
+  aws_account_id = data.aws_caller_identity.current.account_id
+
+  # Dev-friendly: allow destroy even if objects exist
+  force_destroy = true
+
+  tags = var.tags
+}
+
+# ================================================================================
 # VPC MODULE - YOUR PRIVATE NETWORK IN AWS
 # ================================================================================
 # WHAT GETS CREATED BY THIS MODULE:
@@ -119,10 +135,11 @@ module "iam" {
   # A unique AWS identifier for your database instance
   rds_resource_id = try(module.rds[0].rds_resource_id, "")
 
-  rds_db_user    = var.rds_db_user
-  aws_region     = data.aws_region.current.name
-  aws_account_id = data.aws_caller_identity.current.account_id
-  tags           = var.tags
+  rds_db_user                     = var.rds_db_user
+  aws_region                      = data.aws_region.current.name
+  aws_account_id                  = data.aws_caller_identity.current.account_id
+  deployment_artifacts_bucket_arn = module.deployments_bucket.bucket_arn
+  tags                            = var.tags
 }
 
 # ================================================================================
