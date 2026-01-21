@@ -11,6 +11,8 @@ export const validateEnv = (config: Record<string, unknown>) => {
     'DB_NAME',
     'DB_USER'
     // DB_PASSWORD is optional (used for local dev; production uses IAM auth)
+    // DB_IAM_AUTH is optional (when true, forces IAM auth even if DB_PASSWORD is set)
+    // DB_SSL defaults to true in code; TLS is required for IAM auth
   ];
 
   for (const key of requiredKeys) {

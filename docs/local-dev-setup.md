@@ -132,6 +132,10 @@ docker exec -i d2-ridebooking-mysql mysql -u root -proot_password_change_me ride
 | `DB_NAME` | Database name | `ridebooking` |
 | `DB_USER` | Database user | `app_user` |
 | `DB_PASSWORD` | Database password (local only) | `local_dev_password_change_me` |
+| `DB_IAM_AUTH` | Force IAM auth (AWS only) | `true` |
+| `DB_SSL` | Enable TLS to DB | `true` |
+| `DB_SSL_REJECT_UNAUTHORIZED` | Verify DB cert | `true` |
+| `DB_SSL_CA_PATH` | PEM CA bundle path (optional) | `/path/to/aws-rds-global-bundle.pem` |
 
 ### Getting Cognito Values
 
@@ -188,3 +192,7 @@ Local Docker MySQL does not support IAM authentication. For local dev:
 - Use password-based auth (DB_PASSWORD in .env)
 - IAM auth is only used in AWS (EC2 → RDS)
 - Database service will skip IAM token generation if DB_PASSWORD is set
+
+For AWS environments (EC2 → RDS):
+- Set `DB_IAM_AUTH=true` (recommended) and do not set `DB_PASSWORD`
+- Keep TLS enabled (`DB_SSL=true`). IAM auth requires TLS.

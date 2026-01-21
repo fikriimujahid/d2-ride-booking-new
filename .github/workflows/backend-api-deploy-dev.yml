@@ -5,7 +5,7 @@ on:
     branches:
       - dev
     paths:
-      - apps/backend-api/**
+      - apps-api/**
 
 permissions:
   id-token: write
@@ -36,37 +36,38 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: apps/backend-api/package-lock.json
+          cache-dependency-path: apps-api/package-lock.json
 
       # ------------------------------------------------------------
       # 3. Install deps & build (CI is the build authority)
       # ------------------------------------------------------------
       - name: Install dependencies
-        working-directory: apps/backend-api
+        working-directory: apps-api
         run: npm ci
 
       - name: Build NestJS backend api
-        working-directory: apps/backend-api
+        working-directory: apps-api
         run: npm run build
 
       - name: Prune devDependencies (artifact only)
-        working-directory: apps/backend-api
+        working-directory: apps-api
         run: npm prune --omit=dev
 
       # ------------------------------------------------------------
       # 4. Package immutable artifact
       # ------------------------------------------------------------
       - name: Package deployment artifact
+        id: artifact
         run: |
           set -e
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          echo "RELEASE_ID=$TIMESTAMP" >> $GITHUB_ENV
+          echo "release_id=$TIMESTAMP" >> $GITHUB_OUTPUT
 
           mkdir -p artifact
-          cp -r apps/backend-api/dist artifact/
-          cp -r apps/backend-api/node_modules artifact/
-          cp apps/backend-api/ecosystem.config.js artifact/
-          cp apps/backend-api/package*.json artifact/
+          cp -r apps-api/dist artifact/
+          cp -r apps-api/node_modules artifact/
+          cp apps-api/ecosystem.config.js artifact/
+          cp apps-api/package*.json artifact/
 
           tar -czf backend-api-$TIMESTAMP.tar.gz -C artifact .
 
@@ -87,11 +88,11 @@ jobs:
       # ------------------------------------------------------------
       - name: Upload artifact to S3
         run: |
-          aws s3 cp backend-api-${{ env.RELEASE_ID }}.tar.gz \
-            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ env.RELEASE_ID }}.tar.gz
+          aws s3 cp backend-api-${{ steps.artifact.outputs.release_id }}.tar.gz \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-${{ steps.artifact.outputs.release_id }}.tar.gz
 
-          aws s3 cp backend-api-${{ env.RELEASE_ID }}.sha256 \
-            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-${{ env.RELEASE_ID }}.sha256
+          aws s3 cp backend-api-${{ steps.artifact.outputs.release_id }}.sha256 \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-${{ steps.artifact.outputs.release_id }}.sha256
 
       # ------------------------------------------------------------
       # 7. Deploy on EC2 via SSM (no SSH)
@@ -103,23 +104,39 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy backend release ${{ env.RELEASE_ID }}" \
+            --comment "Deploy backend release ${{ steps.artifact.outputs.release_id }}" \
             --parameters 'commands=[
-              "set -e",
+              "set -euo pipefail",
               "APP_ROOT=${{ vars.APP_ROOT }}",
-              "RELEASE_ID=${{ env.RELEASE_ID }}",
+              "RELEASE_ID=${{ steps.artifact.outputs.release_id }}",
 
               "mkdir -p $APP_ROOT/releases/$RELEASE_ID",
+              "mkdir -p $APP_ROOT/shared",
               "cd /tmp",
 
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.tar.gz backend-api-$RELEASE_ID.tar.gz",
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.sha256 backend-api-$RELEASE_ID.sha256",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-$RELEASE_ID.tar.gz backend-api-$RELEASE_ID.tar.gz",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend-api-$RELEASE_ID.sha256 backend-api-$RELEASE_ID.sha256",
 
               "sha256sum -c backend-api-$RELEASE_ID.sha256",
 
               "tar -xzf backend-api-$RELEASE_ID.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
 
-              "# Generate runtime .env (mirrors apps/backend-api/.env.example)",
+              "# Ensure an AWS RDS TLS CA bundle exists locally (required for IAM auth)",
+              "RDS_CA_PATH=$APP_ROOT/shared/aws-rds-global-bundle.pem",
+              "if [ ! -s \"$RDS_CA_PATH\" ]; then ",
+              "  echo 'Downloading AWS RDS global CA bundle...'",
+              "  if command -v curl >/dev/null 2>&1; then",
+              "    curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o \"$RDS_CA_PATH\"",
+              "  elif command -v wget >/dev/null 2>&1; then",
+              "    wget -qO \"$RDS_CA_PATH\" https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
+              "  else",
+              "    echo 'Neither curl nor wget found; cannot download RDS CA bundle' >&2; exit 1",
+              "  fi",
+              "  chmod 644 \"$RDS_CA_PATH\"",
+              "fi",
+
+              "# Generate runtime .env (mirrors apps-api/.env.example)",
+              "umask 077",
               "cat > $APP_ROOT/releases/$RELEASE_ID/.env <<EOF",
               "NODE_ENV=dev",
               "PORT=3000",
@@ -133,8 +150,10 @@ jobs:
               "DB_PORT=${{ secrets.DB_PORT }}",
               "DB_NAME=${{ secrets.DB_NAME }}",
               "DB_USER=${{ secrets.DB_USER }}",
+              "DB_IAM_AUTH=true",
+              "DB_SSL=true",
               "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.DB_SSL_REJECT_UNAUTHORIZED }}",
-              "DB_SSL_CA_PATH=${{ secrets.DB_SSL_CA_PATH }}",
+              "DB_SSL_CA_PATH=$RDS_CA_PATH",
               "EOF",
               "chmod 600 $APP_ROOT/releases/$RELEASE_ID/.env",
 

@@ -7,7 +7,13 @@ module.exports = {
     autorestart: true,
     max_memory_restart: "300M",
     env: {
-      NODE_ENV: "development"
+      NODE_ENV: "dev"
+    },
+    env_development: {
+      NODE_ENV: "dev"
+    },
+    env_production: {
+      NODE_ENV: "production"
     }
   }]
 };
