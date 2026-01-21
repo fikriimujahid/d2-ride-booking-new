@@ -1,8 +1,8 @@
 {
   "name": "backend-api",
   "private": true,
-  "version": "1.0.1",
-  "description": "NestJS backend API (Phase 1 foundation)",
+  "version": "1.0.2",
+  "description": "NestJS backend API",
   "license": "UNLICENSED",
   "scripts": {
     "start": "node dist/main.js",

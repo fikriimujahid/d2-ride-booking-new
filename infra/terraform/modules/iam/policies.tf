@@ -183,7 +183,10 @@ data "aws_iam_policy_document" "backend_api" {
       ]
 
       resources = [
-        "${var.deployment_artifacts_bucket_arn}/backend/*"
+        # Backward-compatible (older prefix)
+        "${var.deployment_artifacts_bucket_arn}/backend/*",
+        # Current workflow prefix (.github/workflows/backend-api-deploy-dev.yml)
+        "${var.deployment_artifacts_bucket_arn}/apps/backend/*"
       ]
     }
   }
@@ -207,8 +210,12 @@ data "aws_iam_policy_document" "backend_api" {
         test     = "StringLike"
         variable = "s3:prefix"
         values = [
+          # Backward-compatible (older prefix)
           "backend/*",
-          "backend"
+          "backend",
+          # Current workflow prefix
+          "apps/backend/*",
+          "apps/backend"
         ]
       }
     }

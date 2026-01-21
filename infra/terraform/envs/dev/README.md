@@ -9,8 +9,9 @@ This directory contains Terraform configuration for the **development environmen
 - [Verify Installation](#2-verify-user_data-installation)
 - [Connect to RDS via Bastion](#3-connect-to-rds-from-local-machine-via-bastion)
 - [Test Database Connectivity](#4-check-rds-connectivity-from-ec2)
-- [Cost Management](#5-cost-management-enabledisable-resources)
-- [Management Scripts](#6-dev-environment-management-scripts)
+- [Check Backend API Status](#5-check-backend-api-status-and-logs)
+- [Cost Management](#6-cost-management-enabledisable-resources)
+- [Management Scripts](#7-dev-environment-management-scripts)
 
 ---
 
@@ -452,7 +453,7 @@ SELECT USER(), CURRENT_USER();
 SHOW VARIABLES LIKE 'authentication_plugin';
 ```
 
-### 3.5 Test IAM Database User Setup
+### 4.5 Test IAM Database User Setup
 
 ```sql
 -- Check if app_user exists
@@ -464,6 +465,264 @@ SELECT User, Host, plugin FROM mysql.user WHERE User = 'app_user';
 GRANT SELECT, INSERT, UPDATE, DELETE ON ridebooking.* TO 'app_user'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
 FLUSH PRIVILEGES;
 ```
+
 ---
 
-**Last Updated:** 2026-01-20
+## 5. Check Backend API Status and Logs
+
+### 5.1 Connect to Backend EC2 Instance
+
+```powershell
+# From local machine - get backend instance ID
+aws ec2 describe-instances `
+    --region ap-southeast-1 `
+    --filters "Name=tag:Service,Values=backend-api" "Name=tag:Environment,Values=dev" "Name=instance-state-name,Values=running" `
+    --query "Reservations[].Instances[].[InstanceId,Tags[?Key=='Name'].Value|[0]]" `
+    --output table
+
+# Connect via SSM
+aws ssm start-session --target i-XXXXXXXXXXXXX
+```
+
+### 5.2 Check PM2 Process Status
+
+The backend API runs as a PM2-managed process. Check its status:
+
+```bash
+# If the app was deployed via SSM (GitHub Actions), PM2 runs under root.
+# Use sudo if `pm2 list` shows nothing.
+
+# List all PM2 processes
+pm2 list
+
+# If needed:
+sudo pm2 list
+
+# Detailed status for backend-api
+pm2 show backend-api
+
+# If needed:
+sudo pm2 show backend-api
+
+# Check if process is online
+pm2 status
+```
+
+**Expected Output:**
+```
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┤
+│ 0  │ backend-api    │ default     │ 1.0.0   │ fork    │ 12345    │ 2h     │ 0    │ online    │ 0%       │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┘
+```
+
+### 5.3 View Real-Time Logs
+
+**View live logs:**
+```bash
+# View all logs (streaming)
+pm2 logs
+
+# View backend-api logs only
+pm2 logs backend-api
+
+# View last 100 lines
+pm2 logs backend-api --lines 100
+
+# View error logs only
+pm2 logs backend-api --err
+
+# View output logs only
+pm2 logs backend-api --out
+```
+
+**Exit logs:** Press `Ctrl+C`
+
+### 5.4 View Historical Logs
+
+```bash
+# View PM2 log files directly
+ls -lh ~/.pm2/logs/
+
+# View error log
+cat ~/.pm2/logs/backend-api-error.log
+
+# View output log
+cat ~/.pm2/logs/backend-api-out.log
+
+# Tail last 50 lines
+tail -n 50 ~/.pm2/logs/backend-api-out.log
+
+# Search for errors
+grep -i error ~/.pm2/logs/backend-api-error.log
+
+# Search for specific patterns
+grep "Database pool initialized" ~/.pm2/logs/backend-api-out.log
+```
+
+### 5.5 Check Application Health
+
+**Test health endpoint from EC2:**
+```bash
+# Check if backend is responding
+curl http://localhost:3000/health
+
+# Expected response:
+# {"status":"ok","timestamp":"2026-01-21T..."}
+
+# Test with verbose output
+curl -v http://localhost:3000/health
+
+# Check API documentation
+curl http://localhost:3000/api/docs
+```
+
+**Test from local machine (if ALB is enabled):**
+```powershell
+# Get ALB DNS name
+$ALB_DNS = aws elbv2 describe-load-balancers `
+    --region ap-southeast-1 `
+    --query "LoadBalancers[?contains(LoadBalancerName,'d2-ride-booking-dev')].DNSName" `
+    --output text
+
+# Test health endpoint
+curl "http://$ALB_DNS/health"
+```
+
+### 5.6 View CloudWatch Logs
+
+**From local machine:**
+```powershell
+# Get log group name
+$LOG_GROUP = "/aws/ec2/dev-d2-ride-booking-backend"
+
+# View recent logs
+aws logs tail $LOG_GROUP --region ap-southeast-1 --follow
+
+# View logs from last hour
+aws logs tail $LOG_GROUP --region ap-southeast-1 --since 1h
+
+# Filter logs for errors
+aws logs filter-log-events `
+    --region ap-southeast-1 `
+    --log-group-name $LOG_GROUP `
+    --filter-pattern "ERROR" `
+    --max-items 50
+
+# Search for specific patterns
+aws logs filter-log-events `
+    --region ap-southeast-1 `
+    --log-group-name $LOG_GROUP `
+    --filter-pattern "Database pool initialized"
+```
+
+### 5.7 Common PM2 Management Commands
+
+```bash
+# Restart backend-api
+pm2 restart backend-api
+
+# Stop backend-api
+pm2 stop backend-api
+
+# Start backend-api
+pm2 start backend-api
+
+# Reload backend-api (zero-downtime restart)
+pm2 reload backend-api
+
+# Delete process from PM2
+pm2 delete backend-api
+
+# Save PM2 process list (survives reboot)
+pm2 save
+
+# Monitor CPU/Memory in real-time
+pm2 monit
+
+# View detailed process info
+pm2 info backend-api
+
+# Flush logs (clear old logs)
+pm2 flush
+```
+
+### 5.8 Check Backend Configuration
+
+```bash
+# View current environment variables
+pm2 env 0  # Replace 0 with your process id
+
+# Check .env file (if deployed)
+cat /opt/apps/backend-api/current/.env
+
+# Verify Node.js version
+node --version
+
+# Check npm version
+npm --version
+
+# View ecosystem config
+cat /opt/apps/backend-api/current/ecosystem.config.js
+```
+
+### 5.9 Troubleshooting Common Issues
+
+**Backend won't start:**
+```bash
+# Check error logs
+pm2 logs backend-api --err --lines 100
+
+# Try starting manually to see errors
+cd /opt/apps/backend-api/current
+node dist/main.js
+
+# Check if port 3000 is already in use
+sudo netstat -tlnp | grep 3000
+# Or
+sudo lsof -i :3000
+```
+
+**Database connection issues:**
+```bash
+# Test RDS connectivity
+nc -zv <RDS_ENDPOINT> 3306
+
+# Check IAM auth token generation
+aws rds generate-db-auth-token \
+    --hostname <RDS_ENDPOINT> \
+    --port 3306 \
+    --region ap-southeast-1 \
+    --username app_user
+
+# Verify DB environment variables
+grep DB_ /opt/apps/backend-api/current/.env
+```
+
+**High CPU/Memory usage:**
+```bash
+# Monitor resources in real-time
+pm2 monit
+
+# View detailed metrics
+pm2 show backend-api
+
+# Check system resources
+htop
+# Or
+top
+```
+
+**View crash/restart history:**
+```bash
+# View PM2 restart count
+pm2 list
+
+# If restart count is high, check error logs
+pm2 logs backend-api --err --lines 200
+```
+
+---
+
+**Last Updated:** 2026-01-21

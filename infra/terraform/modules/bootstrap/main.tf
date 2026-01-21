@@ -192,15 +192,27 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
 
         # ACTIONS: What S3 operations are allowed?
         Action = [
-          "s3:PutObject", # Upload files to S3
-          "s3:GetObject", # Download files from S3
-          "s3:ListBucket" # View list of files in bucket
+          "s3:PutObject",                # Upload files to S3
+          "s3:GetObject",                # Download files from S3
+          "s3:ListBucket",               # View list of files in bucket
+          "s3:GetBucketLocation",        # Needed by aws cli
+          "s3:AbortMultipartUpload",     # Needed for multipart uploads
+          "s3:ListBucketMultipartUploads",# Needed for multipart uploads
+          "s3:ListMultipartUploadParts"  # Needed for multipart uploads
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-deployments-*",  # The bucket itself
-          "arn:aws:s3:::${var.project}-deployments-*/*" # All files in bucket (/* = all objects)
+          # NOTE: Keep this permissive on bucket naming, but restrict to our AWS account
+          # using s3:ResourceAccount below so the role cannot write to arbitrary external buckets.
+          "arn:aws:s3:::*-deployments-*",  # The bucket itself
+          "arn:aws:s3:::*-deployments-*/*" # All files in bucket (/* = all objects)
         ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,7 +364,8 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
           StringEquals = {
-            "aws:ResourceTag/project" = var.project
+            "aws:ResourceTag/Service"   = "backend-api"
+            "aws:ResourceTag/ManagedBy" = "terraform"
           }
         }
       },
