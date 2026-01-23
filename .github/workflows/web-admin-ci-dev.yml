@@ -11,7 +11,7 @@ on:
     # Path filter: only trigger when web-admin files change
     # Why: monorepo optimization - don't run admin CI when backend changes
     paths:
-      - apps/web-admin/**
+      - apps/web-admins/**
 
 # ============================================================================
 # SECURITY PERMISSIONS (Principle of Least Privilege)
