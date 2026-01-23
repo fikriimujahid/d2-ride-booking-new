@@ -19,7 +19,7 @@ on:
     # Path filter: only trigger when Terraform files change
     # Saves CI minutes and speeds up feedback for non-infrastructure PRs
     paths:
-      - infra/scripts/**
+      - infra/terraform/**
 
 # ============================================================================
 # CONCURRENCY CONTROL

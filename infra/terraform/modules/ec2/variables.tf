@@ -23,6 +23,24 @@ variable "instance_profile_name" {
   type        = string
 }
 
+variable "service_name" {
+  description = "Logical service name for tagging/logging (e.g., backend-api, driver-web)"
+  type        = string
+  default     = "backend-api"
+}
+
+variable "app_root" {
+  description = "Filesystem root where releases/current are stored (default: /opt/apps/<service_name>)"
+  type        = string
+  default     = ""
+}
+
+variable "pm2_app_name" {
+  description = "PM2 process name used for log collection (default: service_name)"
+  type        = string
+  default     = ""
+}
+
 variable "instance_type" {
   description = "EC2 instance size (cost aware: t3.micro/t4g.micro)"
   type        = string

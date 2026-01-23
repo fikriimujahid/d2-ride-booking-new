@@ -1,0 +1,160 @@
+name: Web-Driver Deploy (Dev)
+
+# ============================================================================
+# TRIGGER CONFIGURATION
+# ============================================================================
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/web-driver/**
+
+# ============================================================================
+# SECURITY PERMISSIONS (Principle of Least Privilege)
+# ============================================================================
+permissions:
+  contents: read
+  id-token: write
+
+# ============================================================================
+# JOB DEFINITION
+# ============================================================================
+jobs:
+  deploy:
+    name: Deploy web-driver to EC2 (Dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev
+
+    concurrency:
+      group: web-driver-dev
+      cancel-in-progress: true
+
+    defaults:
+      run:
+        working-directory: apps/web-driver
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-driver/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          # Next.js embeds NEXT_PUBLIC_* variables at build time.
+          # We intentionally do NOT hardcode API/Cognito settings in the repo.
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run build
+
+      - name: Prune devDependencies (artifact only)
+        run: npm prune --omit=dev
+
+      - name: Package deployment artifact
+        id: artifact
+        run: |
+          set -e
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "release_id=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+          mkdir -p ../../artifact-web-driver
+          rm -rf ../../artifact-web-driver/*
+
+          cp -r .next ../../artifact-web-driver/
+          if [ -d public ]; then cp -r public ../../artifact-web-driver/; fi
+          cp ecosystem.config.js ../../artifact-web-driver/
+          cp package*.json ../../artifact-web-driver/
+          cp -r node_modules ../../artifact-web-driver/
+
+          tar -czf ../../web-driver-$TIMESTAMP.tar.gz -C ../../artifact-web-driver .
+          sha256sum ../../web-driver-$TIMESTAMP.tar.gz > ../../web-driver-$TIMESTAMP.sha256
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Upload artifact to S3
+        run: |
+          aws s3 cp ../../web-driver-${{ steps.artifact.outputs.release_id }}.tar.gz \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-${{ steps.artifact.outputs.release_id }}.tar.gz
+
+          aws s3 cp ../../web-driver-${{ steps.artifact.outputs.release_id }}.sha256 \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-${{ steps.artifact.outputs.release_id }}.sha256
+
+      - name: Deploy to EC2 using SSM (no SSH)
+        run: |
+          INSTANCE_ID="${{ vars.DRIVER_EC2_INSTANCE_ID }}"
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy web-driver release ${{ steps.artifact.outputs.release_id }}" \
+            --parameters 'commands=[
+              "set -euo pipefail",
+              "APP_ROOT=${{ vars.DRIVER_APP_ROOT }}",
+              "RELEASE_ID=${{ steps.artifact.outputs.release_id }}",
+
+              "mkdir -p $APP_ROOT/releases/$RELEASE_ID",
+              "cd /tmp",
+
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.tar.gz web-driver-$RELEASE_ID.tar.gz",
+              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.sha256 web-driver-$RELEASE_ID.sha256",
+              "sha256sum -c web-driver-$RELEASE_ID.sha256",
+
+              "tar -xzf web-driver-$RELEASE_ID.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
+              "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
+              "cd $APP_ROOT/current",
+
+              "test -f ecosystem.config.js || (echo Missing ecosystem.config.js in release artifact >&2; exit 1)",
+
+              "export HOME=/root",
+              "export PM2_HOME=/root/.pm2",
+
+              "pm2 startOrReload ecosystem.config.js --only web-driver",
+              "pm2 save",
+
+              "cd $APP_ROOT/releases",
+              "ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
+
+              "echo Deployment successful: $RELEASE_ID"
+            ]' \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM CommandId=$COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" || true
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'Status' \
+            --output text || echo "Unknown")
+
+          echo "SSM Status=$STATUS"
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,ResponseCode:ResponseCode,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' \
+            --output json
+
+          if [ "$STATUS" != "Success" ]; then
+            exit 1
+          fi
+

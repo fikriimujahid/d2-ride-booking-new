@@ -1,11 +1,4 @@
-# ============================================================================
-# WEB ADMIN CI WORKFLOW - Quality & Security Checks
-# ============================================================================
-# Purpose: Validate admin dashboard code quality and security
-# This is a Vite + React + TypeScript frontend application
-# ============================================================================
-
-name: ci-web-admin
+name: Web-Admin CI (Dev)
 
 # ============================================================================
 # TRIGGER CONFIGURATION
@@ -18,7 +11,7 @@ on:
     # Path filter: only trigger when web-admin files change
     # Why: monorepo optimization - don't run admin CI when backend changes
     paths:
-      - apps/web-admin/**
+      - apps/web-admins/**
 
 # ============================================================================
 # SECURITY PERMISSIONS (Principle of Least Privilege)
@@ -32,7 +25,8 @@ permissions:
 # JOB DEFINITION
 # ============================================================================
 jobs:
-  web-admin:
+  checks:
+    if: github.event_name == 'pull_request'
     # Use Ubuntu runner (consistent with other workflows)
     runs-on: ubuntu-latest
     
@@ -166,10 +160,3 @@ jobs:
           --config p/javascript \
           --error \
           --metrics=off
-        # Rule sets:
-        # p/default = general security rules (hardcoded secrets, SQL injection)
-        # p/typescript = TS-specific patterns
-        # p/javascript = JS-specific patterns (eval, innerHTML, etc.)
-        # --error = fail CI if issues found
-        # --metrics=off = privacy (don't send usage data to Semgrep)
-
