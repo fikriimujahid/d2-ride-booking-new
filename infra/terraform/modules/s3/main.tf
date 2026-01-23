@@ -20,6 +20,21 @@ resource "aws_s3_bucket" "this" {
 # DEV ONLY: this bucket must be publicly readable to serve a static website.
 # We explicitly disable S3 Block Public Access for this bucket.
 # WARNING: Do not use this pattern for production; use CloudFront + OAC.
+#
+# Trivy findings suppressed (DEV-only exception):
+# - AVD-AWS-0086: block public ACLs
+# - AVD-AWS-0087: block public bucket policies
+# - AVD-AWS-0091: ignore public ACLs
+# - AVD-AWS-0093: restrict public buckets
+#
+#trivy:ignore:AVD-AWS-0086
+#tfsec:ignore:AVD-AWS-0086
+#trivy:ignore:AVD-AWS-0087
+#tfsec:ignore:AVD-AWS-0087
+#trivy:ignore:AVD-AWS-0091
+#tfsec:ignore:AVD-AWS-0091
+#trivy:ignore:AVD-AWS-0093
+#tfsec:ignore:AVD-AWS-0093
 resource "aws_s3_bucket_public_access_block" "this" {
   bucket = aws_s3_bucket.this.id
 
