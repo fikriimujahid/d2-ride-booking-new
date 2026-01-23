@@ -8,7 +8,12 @@
 import { Buffer } from 'buffer';
 import process from 'process';
 
-const g = globalThis as any;
+type GlobalWithPolyfills = typeof globalThis & {
+  Buffer?: typeof Buffer;
+  process?: unknown;
+};
+
+const g = globalThis as GlobalWithPolyfills;
 
 if (typeof g.Buffer === 'undefined') {
   g.Buffer = Buffer;

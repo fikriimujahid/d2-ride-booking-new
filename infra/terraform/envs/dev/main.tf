@@ -380,7 +380,7 @@ module "alb" {
   driver_target_instance_id = var.enable_web_driver ? module.ec2_driver[0].instance_id : ""
   driver_target_port        = 3000
   driver_health_check_path  = "/"
-  tags                  = var.tags
+  tags                      = var.tags
 }
 
 # ================================================================================
@@ -403,8 +403,8 @@ module "route53_frontends" {
 
   # Driver domain points to the ALB (host-based routing forwards to driver EC2)
   enable_driver_record = var.enable_web_driver && var.enable_alb && var.enable_ec2_backend
-  alb_dns_name = try(module.alb[0].alb_dns_name, "")
-  alb_zone_id  = try(module.alb[0].alb_zone_id, "")
+  alb_dns_name         = try(module.alb[0].alb_dns_name, "")
+  alb_zone_id          = try(module.alb[0].alb_zone_id, "")
 
   tags = var.tags
 }

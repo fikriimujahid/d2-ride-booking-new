@@ -4,24 +4,38 @@
  * - sessionStorage is per-tab and clears on tab close.
  * - This also avoids long-lived tokens surviving browser restarts.
  */
-export function getSessionStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
-  // Guard for SSR (not used in Vite, but keeps the module safe and testable).
-  if (typeof window === 'undefined') {
-    const mem = new Map<string, string>();
-    return {
-      getItem: (key) => mem.get(key) ?? null,
-      setItem: (key, value) => {
-        mem.set(key, value);
-      },
-      removeItem: (key) => {
-        mem.delete(key);
-      }
-    };
+class MemoryStorage implements Storage {
+  #mem = new Map<string, string>();
+
+  get length(): number {
+    return this.#mem.size;
   }
 
-  return {
-    getItem: (key) => window.sessionStorage.getItem(key),
-    setItem: (key, value) => window.sessionStorage.setItem(key, value),
-    removeItem: (key) => window.sessionStorage.removeItem(key)
-  };
+  clear(): void {
+    this.#mem.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.#mem.get(key) ?? null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.#mem.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.#mem.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.#mem.set(key, value);
+  }
+}
+
+const memoryStorage = new MemoryStorage();
+
+export function getSessionStorage(): Storage {
+  // Guard for SSR/test environments.
+  const maybeSessionStorage = (globalThis as { sessionStorage?: Storage }).sessionStorage;
+  return maybeSessionStorage ?? memoryStorage;
 }

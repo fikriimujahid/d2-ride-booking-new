@@ -150,8 +150,8 @@ resource "aws_lb_target_group" "backend" {
 resource "aws_lb_target_group" "driver_web" {
   count = var.enable_driver_web ? 1 : 0
 
-  name = "${var.environment}-${var.project_name}-driver-web"
-  port = var.driver_target_port
+  name        = "${var.environment}-${var.project_name}-driver-web"
+  port        = var.driver_target_port
   protocol    = "HTTP"
   target_type = "instance"
   vpc_id      = var.vpc_id

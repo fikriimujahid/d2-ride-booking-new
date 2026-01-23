@@ -8,7 +8,7 @@ on:
     # Only run when PR targets 'dev' branch
     branches: [dev]
     paths:
-      - apps/web-passengers/**
+      - apps/web-passenger/**
 
 # ============================================================================
 # SECURITY PERMISSIONS (Principle of Least Privilege)

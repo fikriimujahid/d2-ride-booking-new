@@ -8,7 +8,8 @@ import type { AuthContextValue } from '../types-internal';
  */
 
 function requireEnv(name: string): string {
-  const value = (import.meta as any).env?.[name] as string | undefined;
+  const env = import.meta.env as unknown as Record<string, string | undefined>;
+  const value = env[name];
   if (!value) {
     throw new Error(`Missing ${name}. See .env.example.`);
   }

@@ -29,7 +29,8 @@ type AccessTokenClaims = {
 
 function requireEnv(name: string): string {
   // Vite exposes env vars to the browser ONLY if prefixed with VITE_.
-  const value = (import.meta as any).env?.[name] as string | undefined;
+  const env = import.meta.env as unknown as Record<string, string | undefined>;
+  const value = env[name];
   if (!value) {
     throw new Error(
       `Missing ${name}. Create a .env file (see .env.example) and restart dev server.`
@@ -62,7 +63,7 @@ function getUserPool(): CognitoUserPool {
   userPoolSingleton = new CognitoUserPool({
     UserPoolId: userPoolId,
     ClientId: clientId,
-    Storage: getSessionStorage() as any
+    Storage: getSessionStorage()
   });
 
   return userPoolSingleton;
@@ -98,7 +99,7 @@ export async function signIn(username: string, password: string) {
   const user = new CognitoUser({
     Username: username,
     Pool: pool,
-    Storage: getSessionStorage() as any
+    Storage: getSessionStorage()
   });
 
   const authDetails = new AuthenticationDetails({

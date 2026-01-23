@@ -38,7 +38,8 @@ export default [
       },
       globals: {
         ...jestGlobals,
-        ...globals.node
+        ...globals.node,
+        ...globals.browser
       }
     },
     plugins: {

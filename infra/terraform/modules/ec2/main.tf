@@ -1,10 +1,10 @@
 # EC2 module: single DEV instance with IAM role + SSM + CloudWatch logs.
 
 locals {
-  effective_app_root    = var.app_root != "" ? var.app_root : "/opt/apps/${var.service_name}"
-  effective_pm2_app     = var.pm2_app_name != "" ? var.pm2_app_name : var.service_name
-  name                  = "${var.environment}-${var.project_name}-${var.service_name}"
-  cloudwatch_log_group  = "/aws/ec2/${var.environment}-${var.project_name}-${var.service_name}"
+  effective_app_root   = var.app_root != "" ? var.app_root : "/opt/apps/${var.service_name}"
+  effective_pm2_app    = var.pm2_app_name != "" ? var.pm2_app_name : var.service_name
+  name                 = "${var.environment}-${var.project_name}-${var.service_name}"
+  cloudwatch_log_group = "/aws/ec2/${var.environment}-${var.project_name}-${var.service_name}"
 }
 
 # AL2023 with SSM agent baked in; SSM parameter keeps AMI patched without hardcoding IDs.
