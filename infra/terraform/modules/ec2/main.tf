@@ -1,7 +1,10 @@
-# EC2 module: single backend instance (DEV) with IAM role + SSM + CloudWatch logs.
+# EC2 module: single DEV instance with IAM role + SSM + CloudWatch logs.
 
 locals {
-  name = "${var.environment}-${var.project_name}-backend"
+  effective_app_root    = var.app_root != "" ? var.app_root : "/opt/apps/${var.service_name}"
+  effective_pm2_app     = var.pm2_app_name != "" ? var.pm2_app_name : var.service_name
+  name                  = "${var.environment}-${var.project_name}-${var.service_name}"
+  cloudwatch_log_group  = "/aws/ec2/${var.environment}-${var.project_name}-${var.service_name}"
 }
 
 # AL2023 with SSM agent baked in; SSM parameter keeps AMI patched without hardcoding IDs.
@@ -10,7 +13,7 @@ data "aws_ssm_parameter" "al2023_ami" {
 }
 
 resource "aws_cloudwatch_log_group" "backend" {
-  name              = "/aws/ec2/${var.environment}-${var.project_name}-backend"
+  name              = local.cloudwatch_log_group
   retention_in_days = 14
   tags = merge(var.tags, {
     Name = local.name
@@ -28,7 +31,9 @@ resource "aws_instance" "backend" {
   user_data = templatefile("${path.module}/user-data.sh.tftpl", {
     log_group_name = aws_cloudwatch_log_group.backend.name,
     env            = var.environment,
-    project        = var.project_name
+    project        = var.project_name,
+    app_root       = local.effective_app_root,
+    pm2_app_name   = local.effective_pm2_app
   })
 
   metadata_options {
@@ -44,7 +49,7 @@ resource "aws_instance" "backend" {
   tags = merge(var.tags, {
     Name        = local.name
     Environment = var.environment
-    Service     = "backend-api"
+    Service     = var.service_name
     ManagedBy   = "terraform"
   })
 }

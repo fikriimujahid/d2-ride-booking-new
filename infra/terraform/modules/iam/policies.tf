@@ -241,4 +241,46 @@ data "aws_iam_policy_document" "driver_web" {
       "arn:aws:logs:*:*:log-group:/aws/ec2/${var.environment}-${var.project_name}-driver*"
     ]
   }
+
+  # Used by SSM deploy commands that run on the instance and download release tarballs.
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ReadDeploymentArtifacts"
+      effect = "Allow"
+
+      actions = [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ]
+
+      resources = [
+        "${var.deployment_artifacts_bucket_arn}/apps/frontend/web-driver/*"
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ListDeploymentArtifacts"
+      effect = "Allow"
+
+      actions = [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ]
+
+      resources = [var.deployment_artifacts_bucket_arn]
+
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values = [
+          "apps/frontend/web-driver/*",
+          "apps/frontend/web-driver"
+        ]
+      }
+    }
+  }
 }

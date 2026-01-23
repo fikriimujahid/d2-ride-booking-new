@@ -299,6 +299,63 @@ module "ec2_backend" {
 }
 
 # ================================================================================
+# STATIC WEB SITES (S3 WEBSITE HOSTING, DEV ONLY)
+# ================================================================================
+module "s3_web_admin" {
+  count  = var.enable_web_admin ? 1 : 0
+  source = "../../modules/s3"
+
+  environment    = var.environment
+  project_name   = var.project_name
+  aws_account_id = data.aws_caller_identity.current.account_id
+  site_name      = "web-admin"
+  force_destroy  = true
+  tags           = var.tags
+}
+
+module "s3_web_passenger" {
+  count  = var.enable_web_passenger ? 1 : 0
+  source = "../../modules/s3"
+
+  environment    = var.environment
+  project_name   = var.project_name
+  aws_account_id = data.aws_caller_identity.current.account_id
+  site_name      = "web-passenger"
+  force_destroy  = true
+  tags           = var.tags
+}
+
+# ================================================================================
+# DRIVER WEB (Next.js on EC2, SSR/realtime ready)
+# ================================================================================
+# SECURITY / COST NOTES:
+# - Single small instance (t3.micro) with PM2.
+# - No SSH: access is via SSM Session Manager.
+# - Instance is in the PRIVATE subnet; it is exposed publicly only through the ALB.
+module "ec2_driver" {
+  count = var.enable_web_driver ? 1 : 0
+
+  source = "../../modules/ec2"
+
+  environment           = var.environment
+  project_name          = var.project_name
+  subnet_id             = module.vpc.private_subnet_id
+  security_group_id     = module.security_groups.driver_web_security_group_id
+  instance_profile_name = module.iam.driver_web_instance_profile_name
+
+  instance_type    = var.driver_instance_type
+  root_volume_size = var.driver_root_volume_size
+
+  service_name = "driver-web"
+  app_root     = "/opt/apps/web-driver"
+  pm2_app_name = "driver-web"
+
+  tags = var.tags
+
+  depends_on = [module.vpc]
+}
+
+# ================================================================================
 # OPTIONAL ALB MODULE - ENABLED VIA TOGGLE (DEFAULT OFF TO SAVE COST)
 # ================================================================================
 module "alb" {
@@ -316,5 +373,38 @@ module "alb" {
   health_check_path     = "/health"
   domain_name           = var.domain_name
   hosted_zone_id        = var.route53_zone_id
+
+  enable_driver_web = var.enable_web_driver
+
+  # When driver web is enabled, route driver.<domain> to the driver EC2 instance.
+  driver_target_instance_id = var.enable_web_driver ? module.ec2_driver[0].instance_id : ""
+  driver_target_port        = 3000
+  driver_health_check_path  = "/"
   tags                  = var.tags
+}
+
+# ================================================================================
+# ROUTE53 RECORDS (DEV)
+# ================================================================================
+module "route53_frontends" {
+  count  = var.route53_zone_id != "" ? 1 : 0
+  source = "../../modules/route53"
+
+  hosted_zone_id = var.route53_zone_id
+  domain_name    = var.domain_name
+  aws_region     = var.aws_region
+
+  # For S3 website alias records, Route53 needs the S3 website hosted zone id.
+  # If you don't have it, we fall back to CNAME (valid for subdomains).
+  s3_website_zone_id = var.s3_website_zone_id
+
+  admin_website_domain     = module.s3_web_admin[0].website_domain
+  passenger_website_domain = module.s3_web_passenger[0].website_domain
+
+  # Driver domain points to the ALB (host-based routing forwards to driver EC2)
+  enable_driver_record = var.enable_web_driver && var.enable_alb && var.enable_ec2_backend
+  alb_dns_name = try(module.alb[0].alb_dns_name, "")
+  alb_zone_id  = try(module.alb[0].alb_zone_id, "")
+
+  tags = var.tags
 }

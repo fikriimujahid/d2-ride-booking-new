@@ -9,8 +9,8 @@ dnf install -y nodejs amazon-cloudwatch-agent
 # Install it globally so operators can run `pm2 list` / `pm2 logs`.
 npm install -g pm2
 
-# App root used by CI deploy workflow (.github/workflows/backend-api-deploy-dev.yml)
-APP_ROOT=/opt/apps/backend-api
+# App root used by CI deploy workflows (SSM-driven deploys)
+APP_ROOT=${app_root}
 mkdir -p "$APP_ROOT" "$APP_ROOT/releases"
 
 # Ensure pm2 can restart apps on reboot (for root, because SSM deploy runs as root).
@@ -27,13 +27,13 @@ cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
       "files": {
         "collect_list": [
           {
-            "file_path": "/root/.pm2/logs/backend-api-out.log",
+            "file_path": "/root/.pm2/logs/${pm2_app_name}-out.log",
             "log_group_name": "${log_group_name}",
             "log_stream_name": "{instance_id}",
             "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
           },
           {
-            "file_path": "/root/.pm2/logs/backend-api-error.log",
+            "file_path": "/root/.pm2/logs/${pm2_app_name}-error.log",
             "log_group_name": "${log_group_name}",
             "log_stream_name": "{instance_id}-error",
             "timestamp_format": "%Y-%m-%dT%H:%M:%SZ"
