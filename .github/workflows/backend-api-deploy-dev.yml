@@ -99,7 +99,28 @@ jobs:
       # ------------------------------------------------------------
       - name: Deploy to EC2 using SSM
         run: |
+          set -euo pipefail
+
+          NAME_TAG="dev-d2-ride-booking-backend-api"
+
           INSTANCE_ID="${{ vars.BACKEND_EC2_INSTANCE_ID }}"
+          DISCOVERED_INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$NAME_TAG" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output text | awk '{print $1}')
+
+          if [ -z "${INSTANCE_ID:-}" ] || [ "${INSTANCE_ID:-}" = "null" ]; then
+            echo "BACKEND_EC2_INSTANCE_ID not set; using discovered instance id $DISCOVERED_INSTANCE_ID (Name tag: $NAME_TAG)"
+            INSTANCE_ID="$DISCOVERED_INSTANCE_ID"
+          elif [ -n "${DISCOVERED_INSTANCE_ID:-}" ] && [ "$INSTANCE_ID" != "$DISCOVERED_INSTANCE_ID" ]; then
+            echo "WARNING: BACKEND_EC2_INSTANCE_ID ($INSTANCE_ID) does not match discovered running instance ($DISCOVERED_INSTANCE_ID) for Name tag $NAME_TAG. Using discovered id." >&2
+            INSTANCE_ID="$DISCOVERED_INSTANCE_ID"
+          fi
+
+          if [ -z "${INSTANCE_ID:-}" ] || [ "${INSTANCE_ID:-}" = "None" ]; then
+            echo "Could not determine backend EC2 instance id. Set vars.BACKEND_EC2_INSTANCE_ID or vars.BACKEND_EC2_NAME_TAG." >&2
+            exit 1
+          fi
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
@@ -146,6 +167,10 @@ jobs:
               "COGNITO_USER_POOL_ID=${{ secrets.COGNITO_USER_POOL_ID }}",
               "COGNITO_CLIENT_ID=${{ secrets.COGNITO_CLIENT_ID }}",
               "",
+
+              "# Explicit CORS allowlist for cross-subdomain web apps",
+              "CORS_ORIGINS=https://admin.d2.fikri.dev,https://driver.d2.fikri.dev,https://passenger.d2.fikri.dev",
+              "",
               "DB_HOST=${{ secrets.DB_HOST }}",
               "DB_PORT=${{ secrets.DB_PORT }}",
               "DB_NAME=${{ secrets.DB_NAME }}",
@@ -168,6 +193,10 @@ jobs:
 
               "pm2 startOrReload ecosystem.config.js --env development --update-env --only backend-api",
               "pm2 save",
+
+              "# Quick sanity check: backend must answer locally before ALB can succeed",
+              "for i in $(seq 1 20); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 1; done",
+              "curl -fsS http://127.0.0.1:3000/health | head -c 300 || (echo 'Local /health check failed' >&2; pm2 logs backend-api --lines 200 || true; exit 1)",
 
               "# Keep only last 3 releases (by RELEASE_ID name, not mtime)",
               "cd $APP_ROOT/releases",
