@@ -99,11 +99,12 @@ jobs:
         run: |
           INSTANCE_ID="${{ vars.DRIVER_EC2_INSTANCE_ID }}"
 
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy web-driver release ${{ steps.artifact.outputs.release_id }}" \
-            --parameters 'commands=[
+          # Build the SSM command payload as JSON to avoid shell-quoting issues.
+          # (The previous inline --parameters 'commands=[...]' form breaks when a command contains single quotes,
+          # e.g. awk '{print $1}' ...)
+          cat > ssm-commands.json <<'EOF'
+          {
+            "commands": [
               "set -euo pipefail",
               "APP_ROOT=${{ vars.DRIVER_APP_ROOT }}",
               "RELEASE_ID=${{ steps.artifact.outputs.release_id }}",
@@ -113,10 +114,7 @@ jobs:
 
               "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.tar.gz web-driver-$RELEASE_ID.tar.gz",
               "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.sha256 web-driver-$RELEASE_ID.sha256",
-              # Normalize checksum format (older artifacts may include a path).
-              "SHA=$(awk '{print $1}' web-driver-$RELEASE_ID.sha256)",
-              "echo $SHA  web-driver-$RELEASE_ID.tar.gz > web-driver-$RELEASE_ID.sha256.local",
-              "sha256sum -c web-driver-$RELEASE_ID.sha256.local",
+              "sha256sum -c web-driver-$RELEASE_ID.sha256 || (SHA=$(awk '{print $1}' web-driver-$RELEASE_ID.sha256); echo $SHA  web-driver-$RELEASE_ID.tar.gz > web-driver-$RELEASE_ID.sha256.local; sha256sum -c web-driver-$RELEASE_ID.sha256.local)",
 
               "tar -xzf web-driver-$RELEASE_ID.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
               "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
@@ -134,7 +132,15 @@ jobs:
               "ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
 
               "echo Deployment successful: $RELEASE_ID"
-            ]' \
+            ]
+          }
+          EOF
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy web-driver release ${{ steps.artifact.outputs.release_id }}" \
+            --parameters file://ssm-commands.json \
             --query 'Command.CommandId' \
             --output text)
 
