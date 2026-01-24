@@ -255,6 +255,12 @@ data "aws_iam_policy_document" "driver_web" {
       ]
 
       resources = [
+        # Current workflow object naming (.github/workflows/web-driver-deploy-dev.yml)
+        # s3://<bucket>/apps/frontend/web-driver-<release_id>.tar.gz
+        # s3://<bucket>/apps/frontend/web-driver-<release_id>.sha256
+        "${var.deployment_artifacts_bucket_arn}/apps/frontend/web-driver-*",
+
+        # Backward/alternative prefix (if artifacts are stored in a folder)
         "${var.deployment_artifacts_bucket_arn}/apps/frontend/web-driver/*"
       ]
     }
@@ -277,6 +283,10 @@ data "aws_iam_policy_document" "driver_web" {
         test     = "StringLike"
         variable = "s3:prefix"
         values = [
+          # Current workflow object naming
+          "apps/frontend/web-driver-*",
+
+          # Backward/alternative prefix
           "apps/frontend/web-driver/*",
           "apps/frontend/web-driver"
         ]

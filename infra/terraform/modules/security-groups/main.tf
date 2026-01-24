@@ -31,6 +31,12 @@ resource "aws_security_group" "alb" {
   )
 }
 
+data "aws_region" "current" {}
+
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${data.aws_region.current.name}.s3"
+}
+
 # ========================================
 # ALB INBOUND RULES (traffic coming INTO the ALB)
 # ========================================
@@ -520,6 +526,46 @@ resource "aws_vpc_security_group_egress_rule" "driver_web_vpc_https" {
     var.tags,
     {
       Name = "${var.environment}-${var.project_name}-driver-web-https-vpc"
+    }
+  )
+}
+
+# When NAT gateway is enabled, allow the driver web instance to reach the public
+# internet over HTTPS for OS updates and package installs (Node/PM2).
+#trivy:ignore:AVD-AWS-0104
+#tfsec:ignore:AVD-AWS-0104
+resource "aws_vpc_security_group_egress_rule" "driver_web_internet_https" {
+  count             = var.enable_nat_gateway ? 1 : 0
+  security_group_id = aws_security_group.driver_web.id
+
+  description = "Allow HTTPS to internet via NAT"
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-driver-web-https-internet"
+    }
+  )
+}
+
+resource "aws_vpc_security_group_egress_rule" "driver_web_s3_https" {
+  count             = var.enable_nat_gateway ? 1 : 0
+  security_group_id = aws_security_group.driver_web.id
+
+  description    = "Allow HTTPS to S3 (artifact downloads)"
+  prefix_list_id = data.aws_prefix_list.s3.id
+  from_port      = 443
+  to_port        = 443
+  ip_protocol    = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-driver-web-https-s3"
     }
   )
 }

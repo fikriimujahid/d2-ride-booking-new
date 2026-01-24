@@ -74,7 +74,9 @@ async function bootstrap() {
     'http://127.0.0.1:3001',
     'http://localhost:4173',
     'http://127.0.0.1:4173',
-    'https://api.d2.fikri.dev/profile'
+    'https://passenger.d2.fikri.dev',
+    'https://admin.d2.fikri.dev',
+    'https://driver.d2.fikri.dev'
   ];
 
   const shouldEnableCors = env !== 'production' || corsOrigins.length > 0;
