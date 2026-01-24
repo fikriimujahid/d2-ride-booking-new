@@ -74,7 +74,7 @@ async function bootstrap() {
     'http://127.0.0.1:3001',
     'http://localhost:4173',
     'http://127.0.0.1:4173',
-    'https://passenger.d2.fikri.dev',
+    'https://fikri.dev',
     'https://admin.d2.fikri.dev',
     'https://driver.d2.fikri.dev'
   ];
