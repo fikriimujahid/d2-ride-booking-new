@@ -356,6 +356,11 @@ module "web_admin_static" {
   count  = var.enable_web_admin ? 1 : 0
   source = "../../modules/cloudfront-static-site"
 
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
   environment    = var.environment
   project_name   = var.project_name
   aws_account_id = data.aws_caller_identity.current.account_id
@@ -372,6 +377,11 @@ module "web_admin_static" {
 module "web_passenger_static" {
   count  = var.enable_web_passenger ? 1 : 0
   source = "../../modules/cloudfront-static-site"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   environment    = var.environment
   project_name   = var.project_name

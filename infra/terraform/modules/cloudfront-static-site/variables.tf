@@ -46,6 +46,12 @@ variable "price_class" {
   default     = "PriceClass_100"
 }
 
+variable "enable_waf" {
+  description = "Whether to create and attach a WAFv2 Web ACL to the CloudFront distribution"
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Common tags"
   type        = map(string)

@@ -1,3 +1,14 @@
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      configuration_aliases = [aws.us_east_1]
+    }
+  }
+}
+
+data "aws_region" "current" {}
+
 locals {
   bucket_name = "${var.project_name}-${var.site_name}-${var.environment}-${var.aws_account_id}"
 
@@ -36,12 +47,85 @@ resource "aws_s3_bucket_ownership_controls" "this" {
   }
 }
 
+data "aws_iam_policy_document" "kms_key_policy" {
+  statement {
+    sid    = "EnableRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.aws_account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowS3UseOfKey"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["s3.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [var.aws_account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${data.aws_region.current.name}.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:s3:arn"
+      values   = ["${aws_s3_bucket.this.arn}/*"]
+    }
+  }
+}
+
+resource "aws_kms_key" "s3" {
+  description         = "SSE-KMS key for ${local.bucket_name}"
+  enable_key_rotation = true
+  policy              = data.aws_iam_policy_document.kms_key_policy.json
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-${var.site_name}-s3-kms"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Purpose     = "static-website-s3-encryption"
+    Site        = var.site_name
+  })
+}
+
+resource "aws_kms_alias" "s3" {
+  name          = "alias/${var.environment}-${var.project_name}-${var.site_name}-s3"
+  target_key_id = aws_kms_key.s3.key_id
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
   rule {
+    bucket_key_enabled = true
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3.arn
     }
   }
 }
@@ -54,11 +138,61 @@ resource "aws_cloudfront_origin_access_control" "this" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_wafv2_web_acl" "this" {
+  count    = var.enable_waf ? 1 : 0
+  provider = aws.us_east_1
+
+  name  = "${var.environment}-${var.project_name}-${var.site_name}-waf"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesCommonRuleSet"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.environment}-${var.project_name}-${var.site_name}-common"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.environment}-${var.project_name}-${var.site_name}-waf"
+    sampled_requests_enabled   = true
+  }
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-${var.site_name}-waf"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Purpose     = "static-website-waf"
+    Site        = var.site_name
+  })
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   comment             = "${var.environment}-${var.project_name}-${var.site_name}"
   default_root_object = "index.html"
   price_class         = var.price_class
+
+  web_acl_id = var.enable_waf ? aws_wafv2_web_acl.this[0].arn : null
 
   aliases = [var.domain_name]
 

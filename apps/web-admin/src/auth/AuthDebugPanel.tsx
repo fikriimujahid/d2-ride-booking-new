@@ -22,15 +22,16 @@ export function AuthDebugPanel() {
   const [showStorageValues, setShowStorageValues] = useState(false);
 
   const enabled = isAuthDebugEnabled();
-  const isAuthed = auth.state.status === 'authenticated';
+  const authedState = auth.state.status === 'authenticated' ? auth.state : null;
+  const isAuthed = authedState !== null;
 
   const decoded = useMemo(() => {
-    if (!isAuthed) return null;
+    if (!authedState) return null;
     return {
-      id: decodeJwtUnsafe(auth.state.tokens.idToken),
-      access: decodeJwtUnsafe(auth.state.tokens.accessToken)
+      id: decodeJwtUnsafe(authedState.tokens.idToken),
+      access: decodeJwtUnsafe(authedState.tokens.accessToken)
     };
-  }, [isAuthed, auth.state]);
+  }, [authedState]);
 
   const derivedFromIdClaims = useMemo(() => {
     if (!decoded || !decoded.id.ok) return { role: null as any, source: null as any };
@@ -53,7 +54,7 @@ export function AuthDebugPanel() {
     } catch (e: any) {
       return [{ key: 'storage_error', value: e?.message ?? String(e) }];
     }
-  }, [isAuthed]);
+  }, []);
 
   if (!enabled) return null;
 
@@ -91,43 +92,45 @@ export function AuthDebugPanel() {
           <Json value={auth.state} />
         </div>
 
-        {isAuthed ? (
+        {authedState ? (
           <div style={{ border: '1px solid #eee', background: '#fff', padding: 10 }}>
             <h3 style={{ marginTop: 0 }}>Role inspection</h3>
             <Json
               value={{
                 uiRole: auth.getRole(),
-                userRoleField: auth.state.user.role ?? null,
+                userRoleField: authedState.user.role ?? null,
                 derivedFromIdToken: derivedFromIdClaims
               }}
             />
           </div>
         ) : null}
 
-        {isAuthed ? (
+        {authedState ? (
           <div style={{ border: '1px solid #eee', background: '#fff', padding: 10 }}>
             <h3 style={{ marginTop: 0 }}>Tokens</h3>
             <Json
               value={{
                 accessToken: showTokens
-                  ? auth.state.tokens.accessToken
-                  : maskToken(auth.state.tokens.accessToken),
-                idToken: showTokens ? auth.state.tokens.idToken : maskToken(auth.state.tokens.idToken),
-                accessTokenExp: auth.state.tokens.accessTokenExp,
-                idTokenExp: auth.state.tokens.idTokenExp
+                  ? authedState.tokens.accessToken
+                  : maskToken(authedState.tokens.accessToken),
+                idToken: showTokens
+                  ? authedState.tokens.idToken
+                  : maskToken(authedState.tokens.idToken),
+                accessTokenExp: authedState.tokens.accessTokenExp,
+                idTokenExp: authedState.tokens.idTokenExp
               }}
             />
           </div>
         ) : null}
 
-        {isAuthed ? (
+        {authedState ? (
           <div style={{ border: '1px solid #eee', background: '#fff', padding: 10 }}>
             <h3 style={{ marginTop: 0 }}>Decoded ID token</h3>
             <Json value={decoded?.id ?? null} />
           </div>
         ) : null}
 
-        {isAuthed ? (
+        {authedState ? (
           <div style={{ border: '1px solid #eee', background: '#fff', padding: 10 }}>
             <h3 style={{ marginTop: 0 }}>Decoded Access token</h3>
             <Json value={decoded?.access ?? null} />
