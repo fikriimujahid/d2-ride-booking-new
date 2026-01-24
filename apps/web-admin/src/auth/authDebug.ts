@@ -39,8 +39,9 @@ export function decodeJwtUnsafe(token: string): JwtDecodeResult {
       header: parseJwtPart(headerB64),
       payload: parseJwtPart(payloadB64)
     };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'Failed to decode JWT' };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : undefined;
+    return { ok: false, error: message ?? 'Failed to decode JWT' };
   }
 }
 

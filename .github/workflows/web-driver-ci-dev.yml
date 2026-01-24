@@ -10,7 +10,7 @@ on:
     
     # Path filter: only trigger when web-driver files change
     paths:
-      - apps/web-driver/**
+      - apps/web-drivers/**
 
 # ============================================================================
 # SECURITY PERMISSIONS (Principle of Least Privilege)
