@@ -103,7 +103,13 @@ async function bootstrap() {
         if (allowList.includes(origin)) return callback(null, true);
         return callback(new Error(`CORS blocked origin: ${origin}`), false);
       },
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // If frontends ever use cookies, this must be true.
+      // Safe with an allowlist (never use credentials with '*').
+      credentials: true,
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // Leave allowedHeaders undefined so the CORS middleware echoes
+      // the browser's Access-Control-Request-Headers on preflight.
+      optionsSuccessStatus: 204,
       maxAge: 86400
     });
 
