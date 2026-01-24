@@ -77,7 +77,7 @@ variable "driver_target_port" {
 variable "driver_health_check_path" {
   description = "Health check path for driver web"
   type        = string
-  default     = "/"
+  default     = "/health"
 }
 
 variable "target_port" {

@@ -25,7 +25,6 @@ async function bootstrap() {
   const nodeEnv = process.env.NODE_ENV ?? 'dev';
   if (allowSelfSigned && nodeEnv !== 'production') {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    // eslint-disable-next-line no-console
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -76,12 +75,23 @@ async function bootstrap() {
     'http://127.0.0.1:4173',
     'https://fikri.dev',
     'https://admin.d2.fikri.dev',
-    'https://driver.d2.fikri.dev'
+    'https://driver.d2.fikri.dev',
+    'https://passenger.d2.fikri.dev'
   ];
 
-  const shouldEnableCors = env !== 'production' || corsOrigins.length > 0;
-  if (shouldEnableCors) {
-    const allowList = corsOrigins.length > 0 ? corsOrigins : devDefaultOrigins;
+  const prodDefaultOrigins = [
+    'https://admin.d2.fikri.dev',
+    'https://driver.d2.fikri.dev',
+    'https://passenger.d2.fikri.dev'
+  ];
+
+  // In production, we still need explicit CORS for the public web apps hosted on
+  // different subdomains (e.g., admin -> api). If you want tighter control,
+  // set CORS_ORIGINS explicitly and it will override these defaults.
+  const defaultOrigins = env === 'production' ? prodDefaultOrigins : devDefaultOrigins;
+  const allowList = corsOrigins.length > 0 ? corsOrigins : defaultOrigins;
+
+  if (allowList.length > 0) {
 
     app.enableCors({
       origin: (
@@ -94,7 +104,6 @@ async function bootstrap() {
         return callback(new Error(`CORS blocked origin: ${origin}`), false);
       },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Authorization', 'Content-Type'],
       maxAge: 86400
     });
 

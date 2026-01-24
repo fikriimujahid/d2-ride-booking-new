@@ -450,7 +450,7 @@ module "alb" {
   # When driver web is enabled, route driver.<domain> to the driver EC2 instance.
   driver_target_instance_id = var.enable_web_driver ? module.ec2_driver[0].instance_id : ""
   driver_target_port        = 3000
-  driver_health_check_path  = "/"
+  driver_health_check_path  = "/health"
   tags                      = var.tags
 }
 
