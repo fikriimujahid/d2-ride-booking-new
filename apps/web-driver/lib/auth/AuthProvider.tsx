@@ -4,6 +4,33 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import type { AuthTokens, AuthUser, Role } from './types';
 import * as cognito from './cognitoClient';
 
+function getApiBaseUrl() {
+  // IMPORTANT (Next.js): env var access must be static for client-side inlining.
+  const v = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!v) throw new Error('Missing NEXT_PUBLIC_API_BASE_URL. See .env.example.');
+  return v;
+}
+
+async function tryHydrateRoleFromProfile(tokens: AuthTokens): Promise<Role | null> {
+  // If Cognito ID token doesn't include custom attributes (common depending on app client config),
+  // fall back to the authoritative app profile record.
+  const baseUrl = getApiBaseUrl().replace(/\/$/, '');
+  const res = await fetch(`${baseUrl}/profile`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${tokens.accessToken}`
+    }
+  });
+
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+
+  const data = (await res.json().catch(() => null)) as null | { role?: unknown };
+  const role = data?.role;
+  if (role === 'ADMIN' || role === 'DRIVER' || role === 'PASSENGER') return role;
+  return null;
+}
+
 export type AuthState =
   | { status: 'loading' }
   | { status: 'unauthenticated' }
@@ -32,6 +59,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((s) => {
         if (!s) return setState({ status: 'unauthenticated' });
         setState({ status: 'authenticated', ...s });
+
+        // If role isn't present in the ID token, try reading it from /profile.
+        if (!s.user.role) {
+          tryHydrateRoleFromProfile(s.tokens)
+            .then((role) => {
+              if (!role) return;
+              setState((prev) =>
+                prev.status === 'authenticated'
+                  ? { ...prev, user: { ...prev.user, role } }
+                  : prev
+              );
+            })
+            .catch(() => undefined);
+        }
       })
       .catch(() => setState({ status: 'unauthenticated' }));
   }, []);
@@ -44,6 +85,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const s = await cognito.signIn(username, password);
           setState({ status: 'authenticated', ...s });
+
+          if (!s.user.role) {
+            const role = await tryHydrateRoleFromProfile(s.tokens).catch(() => null);
+            if (role) {
+              setState((prev) =>
+                prev.status === 'authenticated'
+                  ? { ...prev, user: { ...prev.user, role } }
+                  : prev
+              );
+            }
+          }
         } catch (err) {
           setState({ status: 'unauthenticated' });
           throw err;

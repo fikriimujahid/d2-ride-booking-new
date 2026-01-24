@@ -1,7 +1,7 @@
 locals {
   # Bucket names must be globally unique.
   # We include AWS account id to avoid collisions across accounts.
-  bucket_name = "${var.project_name}-${var.site_name}-${var.environment}-${var.aws_account_id}"
+  bucket_name = var.bucket_name_override != "" ? var.bucket_name_override : "${var.project_name}-${var.site_name}-${var.environment}-${var.aws_account_id}"
 }
 
 resource "aws_s3_bucket" "this" {

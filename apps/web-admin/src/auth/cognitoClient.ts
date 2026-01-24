@@ -21,6 +21,7 @@ type IdTokenClaims = {
   sub?: string;
   email?: string;
   'custom:role'?: Role;
+  'cognito:groups'?: string[] | string;
 };
 
 type AccessTokenClaims = {
@@ -78,6 +79,18 @@ function mapSession(session: CognitoUserSession): { tokens: AuthTokens; user: Au
   const idClaims = jwtDecode<IdTokenClaims>(idToken);
   const accessClaims = jwtDecode<AccessTokenClaims>(accessToken);
 
+  const derivedRole: Role | undefined =
+    idClaims['custom:role'] ??
+    (Array.isArray(idClaims['cognito:groups'])
+      ? (idClaims['cognito:groups'].find(
+          (g): g is Role => g === 'ADMIN' || g === 'DRIVER' || g === 'PASSENGER'
+        ) as Role | undefined)
+      : idClaims['cognito:groups'] === 'ADMIN' ||
+          idClaims['cognito:groups'] === 'DRIVER' ||
+          idClaims['cognito:groups'] === 'PASSENGER'
+        ? (idClaims['cognito:groups'] as Role)
+        : undefined);
+
   return {
     tokens: {
       idToken,
@@ -87,7 +100,7 @@ function mapSession(session: CognitoUserSession): { tokens: AuthTokens; user: Au
     },
     user: {
       email: idClaims.email,
-      role: idClaims['custom:role'],
+      role: derivedRole,
       sub: idClaims.sub
     }
   };

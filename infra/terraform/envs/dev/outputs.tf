@@ -277,6 +277,30 @@ output "environment_summary" {
       }
     }
 
+    frontends = {
+      web_admin = {
+        enabled = var.enable_web_admin
+
+        s3_bucket_name                 = try(module.web_admin_static[0].bucket_name, null)
+        cloudfront_distribution_id     = try(module.web_admin_static[0].cloudfront_distribution_id, null)
+        cloudfront_domain_name         = try(module.web_admin_static[0].cloudfront_domain_name, null)
+        url                            = try(module.web_admin_static[0].site_url, null)
+        github_actions_bucket_var_name = "S3_BUCKET_WEB_ADMIN"
+        github_actions_cf_var_name     = "CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN"
+      }
+
+      web_passenger = {
+        enabled = var.enable_web_passenger
+
+        s3_bucket_name                 = try(module.web_passenger_static[0].bucket_name, null)
+        cloudfront_distribution_id     = try(module.web_passenger_static[0].cloudfront_distribution_id, null)
+        cloudfront_domain_name         = try(module.web_passenger_static[0].cloudfront_domain_name, null)
+        url                            = try(module.web_passenger_static[0].site_url, null)
+        github_actions_bucket_var_name = "S3_BUCKET_WEB_PASSENGER"
+        github_actions_cf_var_name     = "CLOUDFRONT_DISTRIBUTION_ID_WEB_PASSENGER"
+      }
+    }
+
     auth = {
       cognito = {
         user_pool_id       = module.cognito.user_pool_id
