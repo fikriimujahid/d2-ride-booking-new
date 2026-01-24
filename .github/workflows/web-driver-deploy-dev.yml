@@ -64,9 +64,6 @@ jobs:
           NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
         run: npm run build
 
-      - name: Prune devDependencies (artifact only)
-        run: npm prune --omit=dev
-
       - name: Package deployment artifact
         id: artifact
         run: |
@@ -81,7 +78,9 @@ jobs:
           if [ -d public ]; then cp -r public ../../artifact-web-driver/; fi
           cp ecosystem.config.js ../../artifact-web-driver/
           cp package*.json ../../artifact-web-driver/
-          cp -r node_modules ../../artifact-web-driver/
+
+          # NOTE: Do not ship node_modules from CI.
+          # Installing on-instance avoids subtle corruption/mismatch issues and keeps artifacts smaller.
 
           tar -czf ../../web-driver-$TIMESTAMP.tar.gz -C ../../artifact-web-driver .
           # Write the checksum with a stable filename (no path) so verification works after download.
@@ -128,11 +127,19 @@ jobs:
 
               "test -f ecosystem.config.js || (echo Missing ecosystem.config.js in release artifact >&2; exit 1)",
 
+              "export NEXT_TELEMETRY_DISABLED=1",
+
               "export HOME=/root",
               "export PM2_HOME=/root/.pm2",
 
+              "npm ci --omit=dev",
+
+              "pm2 delete web-driver || true",
+
               "pm2 startOrReload ecosystem.config.js --only web-driver",
               "pm2 save",
+
+              "curl -fsS http://localhost:3000/health >/dev/null",
 
               "cd $APP_ROOT/releases",
               "ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
