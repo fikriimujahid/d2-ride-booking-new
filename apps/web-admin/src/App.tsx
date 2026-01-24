@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useAuth } from './auth/AuthProvider';
+import { AuthDebugPanel } from './auth/AuthDebugPanel';
 import { apiFetch } from './api/apiClient';
+import { ProfilePanel } from './profile/ProfilePanel';
 
 export function App() {
   const auth = useAuth();
@@ -93,40 +95,50 @@ export function App() {
         Signed in as <strong>{auth.state.user.email ?? 'unknown'}</strong> (role: <strong>{role ?? 'none'}</strong>)
       </p>
 
+      <AuthDebugPanel />
+
       {!canUseAdmin ? (
         <section style={{ border: '1px solid #f3c2c2', background: '#fff5f5', padding: 12 }}>
           <h2 style={{ marginTop: 0 }}>Access denied</h2>
           <p>This app requires the Cognito ID token claim <code>custom:role</code> = <code>ADMIN</code>.</p>
         </section>
       ) : (
-        <section style={{ border: '1px solid #ddd', padding: 12 }}>
-          <h2 style={{ marginTop: 0 }}>API connectivity</h2>
-          <p>Calls the backend using <code>Authorization: Bearer &lt;accessToken&gt;</code>.</p>
-          <button
-            style={{ padding: '8px 12px' }}
-            onClick={async () => {
-              setError(null);
-              setApiResult(null);
-              try {
-                const res = await apiFetch('/health', { method: 'GET' }, auth);
-                setApiResult(await res.text());
-              } catch (err: any) {
-                setError(err?.message ?? 'Request failed');
-              }
-            }}
-          >
-            GET /health
-          </button>
-          {apiResult ? (
-            <pre style={{ marginTop: 12, background: '#111', color: '#eee', padding: 12, overflow: 'auto' }}>
-              {apiResult}
-            </pre>
-          ) : null}
-          {error ? (
-            <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>
-          ) : null}
-        </section>
+        <>
+          <section style={{ border: '1px solid #ddd', padding: 12 }}>
+            <h2 style={{ marginTop: 0 }}>API connectivity</h2>
+            <p>Calls the backend using <code>Authorization: Bearer &lt;accessToken&gt;</code>.</p>
+            <button
+              style={{ padding: '8px 12px' }}
+              onClick={async () => {
+                setError(null);
+                setApiResult(null);
+                try {
+                  const res = await apiFetch('/health', { method: 'GET' }, auth);
+                  setApiResult(await res.text());
+                } catch (err: any) {
+                  setError(err?.message ?? 'Request failed');
+                }
+              }}
+            >
+              GET /health
+            </button>
+            {apiResult ? (
+              <pre style={{ marginTop: 12, background: '#111', color: '#eee', padding: 12, overflow: 'auto' }}>
+                {apiResult}
+              </pre>
+            ) : null}
+            {error ? (
+              <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>
+            ) : null}
+          </section>
+
+          <ProfilePanel
+            auth={auth}
+            defaultEmail={auth.state.status === 'authenticated' ? auth.state.user.email : undefined}
+          />
+        </>
       )}
     </main>
   );
 }
+

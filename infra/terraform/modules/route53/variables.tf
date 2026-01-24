@@ -19,14 +19,28 @@ variable "s3_website_zone_id" {
   default     = ""
 }
 
+variable "enable_admin_record" {
+  description = "Whether to create admin.<domain> records (set false if another module manages admin DNS, e.g., CloudFront module)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_passenger_record" {
+  description = "Whether to create passenger.<domain> records (set false if another module manages passenger DNS, e.g., CloudFront module)"
+  type        = bool
+  default     = true
+}
+
 variable "admin_website_domain" {
-  description = "S3 website domain for admin site (e.g., bucket.s3-website-REGION.amazonaws.com)"
+  description = "S3 website domain for admin site (e.g., bucket.s3-website-REGION.amazonaws.com). Required if enable_admin_record=true."
   type        = string
+  default     = ""
 }
 
 variable "passenger_website_domain" {
-  description = "S3 website domain for passenger site"
+  description = "S3 website domain for passenger site. Required if enable_passenger_record=true."
   type        = string
+  default     = ""
 }
 
 variable "alb_dns_name" {

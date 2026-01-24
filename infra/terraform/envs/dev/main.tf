@@ -50,6 +50,12 @@ provider "aws" {
   region = var.aws_region
 }
 
+# CloudFront requires ACM certificates in us-east-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 # ================================================================================
 # DATA SOURCES - FETCHING INFORMATION FROM AWS
 # ================================================================================
@@ -59,6 +65,51 @@ data "aws_caller_identity" "current" {}
 # CURRENT AWS REGION
 # --------------------------------------------------------------------------------
 data "aws_region" "current" {}
+
+# ================================================================================
+# ACM CERTIFICATE (us-east-1) FOR CLOUDFRONT (DEV)
+# ================================================================================
+resource "aws_acm_certificate" "cloudfront" {
+  provider = aws.us_east_1
+
+  domain_name       = "*.${var.domain_name}"
+  validation_method = "DNS"
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-cloudfront-cert"
+    Environment = var.environment
+    Service     = "cloudfront"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "cloudfront_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cloudfront.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  zone_id = var.route53_zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 60
+  records = [each.value.record]
+
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "cloudfront" {
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.cloudfront.arn
+  validation_record_fqdns = [for r in aws_route53_record.cloudfront_cert_validation : r.fqdn]
+}
 
 # ================================================================================
 # DEPLOYMENT ARTIFACTS BUCKET (S3)
@@ -299,30 +350,50 @@ module "ec2_backend" {
 }
 
 # ================================================================================
-# STATIC WEB SITES (S3 WEBSITE HOSTING, DEV ONLY)
+# STATIC WEB SITES (CLOUDFRONT + PRIVATE S3, DEV)
 # ================================================================================
-module "s3_web_admin" {
+module "web_admin_static" {
   count  = var.enable_web_admin ? 1 : 0
-  source = "../../modules/s3"
+  source = "../../modules/cloudfront-static-site"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   environment    = var.environment
   project_name   = var.project_name
   aws_account_id = data.aws_caller_identity.current.account_id
+
   site_name      = "web-admin"
-  force_destroy  = true
-  tags           = var.tags
+  domain_name    = "admin.${var.domain_name}"
+  hosted_zone_id = var.route53_zone_id
+
+  acm_certificate_arn = aws_acm_certificate_validation.cloudfront.certificate_arn
+  force_destroy       = true
+  tags                = var.tags
 }
 
-module "s3_web_passenger" {
+module "web_passenger_static" {
   count  = var.enable_web_passenger ? 1 : 0
-  source = "../../modules/s3"
+  source = "../../modules/cloudfront-static-site"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   environment    = var.environment
   project_name   = var.project_name
   aws_account_id = data.aws_caller_identity.current.account_id
+
   site_name      = "web-passenger"
-  force_destroy  = true
-  tags           = var.tags
+  domain_name    = "passenger.${var.domain_name}"
+  hosted_zone_id = var.route53_zone_id
+
+  acm_certificate_arn = aws_acm_certificate_validation.cloudfront.certificate_arn
+  force_destroy       = true
+  tags                = var.tags
 }
 
 # ================================================================================
@@ -394,12 +465,14 @@ module "route53_frontends" {
   domain_name    = var.domain_name
   aws_region     = var.aws_region
 
-  # For S3 website alias records, Route53 needs the S3 website hosted zone id.
-  # If you don't have it, we fall back to CNAME (valid for subdomains).
-  s3_website_zone_id = var.s3_website_zone_id
+  # Admin/passenger are managed by the CloudFront static-site modules.
+  enable_admin_record     = false
+  enable_passenger_record = false
 
-  admin_website_domain     = module.s3_web_admin[0].website_domain
-  passenger_website_domain = module.s3_web_passenger[0].website_domain
+  # Keep these empty to avoid accidental usage.
+  s3_website_zone_id       = ""
+  admin_website_domain     = ""
+  passenger_website_domain = ""
 
   # Driver domain points to the ALB (host-based routing forwards to driver EC2)
   enable_driver_record = var.enable_web_driver && var.enable_alb && var.enable_ec2_backend

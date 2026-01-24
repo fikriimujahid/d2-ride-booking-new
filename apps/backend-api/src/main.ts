@@ -18,6 +18,23 @@ import { AppModule } from './app.module';
 import { JsonLogger } from './logging/json-logger.service';
 
 async function bootstrap() {
+  // Dev-only workaround for environments that intercept HTTPS with a custom/self-signed CA.
+  // Prefer setting NODE_EXTRA_CA_CERTS to your corporate root CA instead.
+  const allowSelfSignedRaw = (process.env.ALLOW_SELF_SIGNED_CERTS ?? '').toLowerCase();
+  const allowSelfSigned = allowSelfSignedRaw === 'true' || allowSelfSignedRaw === '1' || allowSelfSignedRaw === 'yes';
+  const nodeEnv = process.env.NODE_ENV ?? 'dev';
+  if (allowSelfSigned && nodeEnv !== 'production') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    // eslint-disable-next-line no-console
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        msg: 'ALLOW_SELF_SIGNED_CERTS enabled: TLS certificate verification is disabled (dev only)',
+        hint: 'Prefer using NODE_EXTRA_CA_CERTS with your corporate CA when possible.'
+      })
+    );
+  }
+
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
     logger: new JsonLogger('bootstrap')
@@ -38,6 +55,48 @@ async function bootstrap() {
 
   const port = Number(config.get<number>('PORT') ?? 3000);
   const env = config.get<string>('NODE_ENV') ?? 'dev';
+
+  // CORS
+  // - Local dev: allow Vite dev server(s) to call the API with Bearer tokens.
+  // - Prod: enable only when explicitly configured (or when same-origin is used).
+  const corsOriginsRaw = config.get<string>('CORS_ORIGINS');
+  const corsOrigins = (corsOriginsRaw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const devDefaultOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173'
+  ];
+
+  const shouldEnableCors = env !== 'production' || corsOrigins.length > 0;
+  if (shouldEnableCors) {
+    const allowList = corsOrigins.length > 0 ? corsOrigins : devDefaultOrigins;
+
+    app.enableCors({
+      origin: (
+        origin: string | undefined,
+        callback: (err: Error | null, allow?: boolean) => void
+      ) => {
+        // Allow non-browser clients (curl/Postman) which have no Origin header.
+        if (!origin) return callback(null, true);
+        if (allowList.includes(origin)) return callback(null, true);
+        return callback(new Error(`CORS blocked origin: ${origin}`), false);
+      },
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type'],
+      maxAge: 86400
+    });
+
+    logger.log('CORS enabled', { allowList });
+  }
 
   // Swagger API documentation (enabled in dev, disable in production)
   if (env !== 'production') {

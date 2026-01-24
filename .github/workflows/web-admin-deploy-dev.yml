@@ -62,6 +62,13 @@ jobs:
       - name: Deploy to S3
         run: |
           aws s3 sync dist s3://${{ vars.S3_BUCKET_WEB_ADMIN }} --delete
+
+      - name: Invalidate CloudFront cache
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN }} \
+            --paths "/*"
         # Rule sets:
         # p/default = general security rules (hardcoded secrets, SQL injection)
         # p/typescript = TS-specific patterns

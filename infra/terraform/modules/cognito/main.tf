@@ -392,3 +392,31 @@ resource "aws_cognito_user_pool_client" "main" {
   ]
   prevent_user_existence_errors = "ENABLED"
 }
+
+# ============================================================================
+# RESOURCE: Cognito User Pool Groups (Roles)
+# ----------------------------------------------------------------------------
+resource "aws_cognito_user_group" "admin" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  name         = "ADMIN"
+  description  = "Administrative users"
+
+  # Lower number = higher precedence
+  precedence = 1
+}
+
+resource "aws_cognito_user_group" "passenger" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  name         = "PASSENGER"
+  description  = "Passenger users"
+
+  precedence = 2
+}
+
+resource "aws_cognito_user_group" "driver" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  name         = "DRIVER"
+  description  = "Driver users"
+
+  precedence = 3
+}

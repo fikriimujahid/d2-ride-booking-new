@@ -18,6 +18,12 @@ variable "site_name" {
   type        = string
 }
 
+variable "bucket_name_override" {
+  description = "Optional explicit bucket name override (e.g., admin.example.com). Required if you want a custom domain to work directly with S3 static website hosting (no CloudFront)."
+  type        = string
+  default     = ""
+}
+
 variable "force_destroy" {
   description = "DEV-friendly: allow destroy even if objects exist"
   type        = bool

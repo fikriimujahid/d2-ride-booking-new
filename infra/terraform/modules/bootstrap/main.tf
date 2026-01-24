@@ -266,8 +266,18 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-*-admin-*"
+          # Legacy/static naming
+          "arn:aws:s3:::${var.project}-*-admin-*",
+
+          # Current DEV frontends (S3 website hosting)
+          "arn:aws:s3:::*-web-admin-*"
         ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -285,8 +295,66 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-*-admin-*/*"
+          # Legacy/static naming
+          "arn:aws:s3:::${var.project}-*-admin-*/*",
+
+          # Current DEV frontends (S3 website hosting)
+          "arn:aws:s3:::*-web-admin-*/*"
         ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7b: S3 Static Site Passenger - Buckets
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "S3StaticSitePassengerBuckets"
+        Effect = "Allow"
+
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::*-web-passenger-*"
+        ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7c: S3 Static Site Passenger - Objects
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "S3StaticSitePassengerObjects"
+        Effect = "Allow"
+
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::*-web-passenger-*/*"
+        ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -364,7 +432,6 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
           StringEquals = {
-            "aws:ResourceTag/Service"   = "backend-api"
             "aws:ResourceTag/ManagedBy" = "terraform"
           }
         }
