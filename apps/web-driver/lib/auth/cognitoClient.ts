@@ -27,10 +27,28 @@ type AccessTokenClaims = { exp: number };
 export function getCognitoConfig() {
   // IMPORTANT (Next.js): env var access must be static for client-side inlining.
   // `process.env[name]` will be undefined in the browser bundle.
-  const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
-  const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
-  if (!userPoolId) throw new Error('Missing NEXT_PUBLIC_COGNITO_USER_POOL_ID. See .env.example.');
-  if (!clientId) throw new Error('Missing NEXT_PUBLIC_COGNITO_CLIENT_ID. See .env.example.');
+  const userPoolId = (process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '').trim();
+  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '').trim();
+
+  if (!userPoolId) {
+    throw new Error('Missing NEXT_PUBLIC_COGNITO_USER_POOL_ID. See .env.example.');
+  }
+  if (!clientId) {
+    throw new Error('Missing NEXT_PUBLIC_COGNITO_CLIENT_ID. See .env.example.');
+  }
+
+  // The Cognito SDK will throw a generic "Invalid UserPoolId format." later.
+  // Validate here so misconfigured deployments fail with a useful message.
+  if (userPoolId.includes('arn:') || userPoolId.includes('userpool/')) {
+    throw new Error(
+      'Invalid NEXT_PUBLIC_COGNITO_USER_POOL_ID: expected the raw pool id like "ap-southeast-1_XXXXXXXXX" (not an ARN).'
+    );
+  }
+  if (userPoolId.length > 55 || !/^[\w-]+_[0-9a-zA-Z]+$/.test(userPoolId)) {
+    throw new Error(
+      'Invalid NEXT_PUBLIC_COGNITO_USER_POOL_ID format: expected "<region>_<id>" like "ap-southeast-1_XXXXXXXXX".'
+    );
+  }
   return {
     userPoolId,
     clientId

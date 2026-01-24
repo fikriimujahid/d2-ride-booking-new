@@ -4,6 +4,7 @@
   "version": "1.0.1",
   "scripts": {
     "dev": "next dev",
+    "validate:env": "node scripts/validate-env.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
