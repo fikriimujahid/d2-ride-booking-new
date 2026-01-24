@@ -94,7 +94,89 @@ data "aws_iam_policy_document" "kms_key_policy" {
     condition {
       test     = "StringLike"
       variable = "kms:EncryptionContext:aws:s3:arn"
-      values   = ["${aws_s3_bucket.this.arn}/*"]
+      # With S3 Bucket Keys enabled, the KMS encryption context can be either:
+      # - arn:aws:s3:::bucket-name
+      # - arn:aws:s3:::bucket-name/object-key
+      values = [
+        aws_s3_bucket.this.arn,
+        "${aws_s3_bucket.this.arn}/*",
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudFrontDecryptViaS3"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+
+    # CloudFront reads objects through S3; KMS sees the usage as "via" S3.
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${data.aws_region.current.name}.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:s3:arn"
+      values = [
+        aws_s3_bucket.this.arn,
+        "${aws_s3_bucket.this.arn}/*",
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AllowS3GrantsForBucketKey"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["s3.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:CreateGrant",
+      "kms:ListGrants",
+      "kms:RevokeGrant",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [var.aws_account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${data.aws_region.current.name}.amazonaws.com"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:s3:arn"
+      values = [
+        aws_s3_bucket.this.arn,
+        "${aws_s3_bucket.this.arn}/*",
+      ]
     }
   }
 }
@@ -154,7 +236,15 @@ resource "aws_wafv2_web_acl" "this" {
     priority = 1
 
     override_action {
-      none {}
+      dynamic "count" {
+        for_each = var.waf_managed_rules_mode == "count" ? [1] : []
+        content {}
+      }
+
+      dynamic "none" {
+        for_each = var.waf_managed_rules_mode == "none" ? [1] : []
+        content {}
+      }
     }
 
     statement {
@@ -186,6 +276,56 @@ resource "aws_wafv2_web_acl" "this" {
   })
 }
 
+resource "aws_cloudfront_response_headers_policy" "this" {
+  count = var.enable_security_headers ? 1 : 0
+
+  name    = "${var.environment}-${var.project_name}-${var.site_name}-security-headers"
+  comment = "Security headers for ${var.domain_name}"
+
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+
+    xss_protection {
+      protection = true
+      mode_block = true
+      override   = true
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = "geolocation=(), microphone=(), camera=()"
+      override = true
+    }
+  }
+
+  remove_headers_config {
+    items {
+      header = "Server"
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   comment             = "${var.environment}-${var.project_name}-${var.site_name}"
@@ -213,6 +353,8 @@ resource "aws_cloudfront_distribution" "this" {
     # AWS managed policies
     cache_policy_id          = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
     origin_request_policy_id = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf" # Managed-CORS-S3Origin
+
+    response_headers_policy_id = var.enable_security_headers ? aws_cloudfront_response_headers_policy.this[0].id : null
   }
 
   custom_error_response {
@@ -261,6 +403,12 @@ data "aws_iam_policy_document" "bucket_policy" {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
       values   = [aws_cloudfront_distribution.this.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceAccount"
+      values   = [var.aws_account_id]
     }
   }
 }

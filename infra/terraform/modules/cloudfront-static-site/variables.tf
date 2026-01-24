@@ -52,6 +52,23 @@ variable "enable_waf" {
   default     = true
 }
 
+variable "waf_managed_rules_mode" {
+  description = "How the AWS managed WAF rule group behaves: 'count' (monitor only) or 'none' (enforce managed rule actions)."
+  type        = string
+  default     = "count"
+
+  validation {
+    condition     = contains(["count", "none"], var.waf_managed_rules_mode)
+    error_message = "waf_managed_rules_mode must be one of: count, none"
+  }
+}
+
+variable "enable_security_headers" {
+  description = "Whether to attach a CloudFront response headers policy with basic security headers."
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Common tags"
   type        = map(string)

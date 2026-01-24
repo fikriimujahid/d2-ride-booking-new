@@ -358,6 +358,44 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7d: KMS for S3 Static Sites (SSE-KMS)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "KMSForS3StaticSitesDataKey"
+        Effect = "Allow"
+
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:Encrypt",
+          "kms:GenerateDataKey*",
+          "kms:ReEncrypt*"
+        ]
+
+        # Restrict to keys in *this* AWS account; further constrained by
+        # account ownership.
+        Resource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+      },
+
+      {
+        Sid    = "KMSForS3StaticSitesGrants"
+        Effect = "Allow"
+
+        Action = [
+          "kms:CreateGrant"
+        ]
+
+        Resource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+
+        Condition = {
+          StringEquals = {
+            "kms:CallerAccount"         = data.aws_caller_identity.current.account_id
+            "kms:GrantIsForAWSResource" = "true"
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #7: S3 Static Site Driver - Buckets
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
@@ -417,6 +455,23 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         # "arn:aws:logs:*:*:log-group:/aws/application-name/*"
         #
         Resource = "*"
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #9b: CloudFront Cache Invalidation
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "CloudFrontCreateInvalidation"
+        Effect = "Allow"
+
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetDistribution",
+          "cloudfront:GetInvalidation",
+          "cloudfront:ListInvalidations"
+        ]
+
+        Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
