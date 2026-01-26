@@ -114,6 +114,9 @@ data "aws_iam_policy_document" "backend_api" {
       "ssm:GetParametersByPath"
     ]
     resources = [
+      # Some AWS authz paths for GetParametersByPath evaluate against the base
+      # path ARN (no trailing /*), so allow both.
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/backend-api",
       "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/backend-api/*"
     ]
   }
@@ -271,6 +274,7 @@ data "aws_iam_policy_document" "driver_web" {
       "ssm:GetParametersByPath"
     ]
     resources = [
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/web-driver",
       "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/web-driver/*"
     ]
   }
