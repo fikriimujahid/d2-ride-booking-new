@@ -61,6 +61,11 @@ commands = [
   f"S3_KEY_SHA={S3_KEY_SHA}",
   f"PARAM_PATH={PARAM_PATH}",
 
+  "# Ensure runtime OS user exists (required by install/chown/runuser)",
+  "if ! getent group appuser >/dev/null 2>&1; then groupadd --system appuser; fi",
+  "if ! id -u appuser >/dev/null 2>&1; then useradd --system --gid appuser --create-home --home-dir /home/appuser --shell /bin/bash appuser; fi",
+  "install -d -m 0755 -o appuser -g appuser /home/appuser",
+
   "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases ${APP_DIR}/shared",
   "install -d -m 0755 -o root -g root /var/log/app",
 
