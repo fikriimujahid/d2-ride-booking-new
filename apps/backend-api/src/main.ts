@@ -76,12 +76,14 @@ async function bootstrap() {
     'https://fikri.dev',
     'https://admin.d2.fikri.dev',
     'https://driver.d2.fikri.dev',
+    'https://api.d2.fikri.dev',
     'https://passenger.d2.fikri.dev'
   ];
 
   const prodDefaultOrigins = [
     'https://admin.d2.fikri.dev',
     'https://driver.d2.fikri.dev',
+    'https://api.d2.fikri.dev',
     'https://passenger.d2.fikri.dev'
   ];
 
