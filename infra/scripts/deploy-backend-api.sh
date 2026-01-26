@@ -112,6 +112,11 @@ commands = [
 
   "ln -sfn ${APP_DIR}/releases/${RELEASE_ID} ${APP_DIR}/current",
 
+  "# Debug: show which ecosystem config is deployed and whether it supports PM2_LOG_DIR",
+  "echo '[deploy] ecosystem.config.js (head):'",
+  "head -n 50 ${APP_DIR}/current/ecosystem.config.js || true",
+  "if ! grep -q 'PM2_LOG_DIR' ${APP_DIR}/current/ecosystem.config.js; then echo '[deploy][warn] ecosystem.config.js does not reference PM2_LOG_DIR; PM2 may write logs under /home/appuser/.pm2/logs instead of shared/logs.'; fi",
+
   "# Load runtime config from SSM Parameter Store (no .env files)",
   "if ! command -v python3 >/dev/null 2>&1; then dnf -y install python3; fi",
   "ENV_EXPORT_FILE=$(mktemp /tmp/${SERVICE_NAME}-env.XXXXXX)",
@@ -120,7 +125,7 @@ commands = [
   "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
 
   "# Start/restart via PM2 as appuser",
-  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" PM2_LOG_DIR=\"${APP_DIR}/shared/logs\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
+  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" PM2_LOG_DIR=\"${APP_DIR}/shared/logs\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 delete \"$PM2_APP_NAME\" >/dev/null 2>&1 || true; pm2 start ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save; echo \"[deploy] pm2 describe $PM2_APP_NAME:\"; pm2 describe \"$PM2_APP_NAME\" | head -n 200'",
   "rm -f \"$ENV_EXPORT_FILE\" || true",
 
   "# Health check (surface crash loops in CloudWatch/SSM output)",
