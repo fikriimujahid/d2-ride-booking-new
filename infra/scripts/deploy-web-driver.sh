@@ -80,7 +80,7 @@ commands = [
   "chmod 0600 \"$ENV_EXPORT_FILE\"",
   "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
 
-  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; [ -s \"'$ENV_EXPORT_FILE'\" ] && source \"'$ENV_EXPORT_FILE'\" || true; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
+  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; [ -s \"'$ENV_EXPORT_FILE'\" ] && source \"'$ENV_EXPORT_FILE'\" || true; pm2 delete \"$PM2_APP_NAME\" >/dev/null 2>&1 || true; pm2 start ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
   "rm -f \"$ENV_EXPORT_FILE\" || true",
 
   "# Health check",
