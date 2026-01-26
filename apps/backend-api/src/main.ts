@@ -100,8 +100,8 @@ async function bootstrap() {
   ];
 
   // In production, we still need explicit CORS for the public web apps hosted on
-  // different subdomains (e.g., admin -> api). If you want tighter control,
-  // set CORS_ORIGINS explicitly and it will override these defaults.
+  // different subdomains (e.g., admin -> api). For dev ergonomics, configured
+  // CORS_ORIGINS is treated as additive (merged with defaults).
   const defaultOrigins = env === 'production' ? prodDefaultOrigins : devDefaultOrigins;
   // Best practice for dev ergonomics: treat configured origins as additive.
   // This avoids accidentally blocking same-origin tools (e.g., Swagger at api.*)
@@ -109,6 +109,9 @@ async function bootstrap() {
   const allowList = Array.from(
     new Set([...(defaultOrigins ?? []), ...(corsOrigins.length > 0 ? corsOrigins : [])])
   );
+
+  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, '');
+  const allowSet = new Set(allowList.map(normalizeOrigin));
 
   if (allowList.length > 0) {
 
@@ -119,7 +122,14 @@ async function bootstrap() {
       ) => {
         // Allow non-browser clients (curl/Postman) which have no Origin header.
         if (!origin) return callback(null, true);
-        if (allowList.includes(origin)) return callback(null, true);
+        const normalized = normalizeOrigin(origin);
+        if (allowSet.has(normalized)) return callback(null, true);
+        logger.warn('CORS blocked origin', {
+          origin,
+          normalized,
+          allowListCount: allowList.length,
+          allowListSample: allowList.slice(0, 10)
+        });
         return callback(new Error(`CORS blocked origin: ${origin}`), false);
       },
       // If frontends ever use cookies, this must be true.
