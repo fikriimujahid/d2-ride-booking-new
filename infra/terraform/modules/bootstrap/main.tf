@@ -475,6 +475,40 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #9c: SSM Parameter Store (Runtime Config)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # Deploy scripts run a local preflight on the GitHub runner using
+      # `aws ssm get-parameters-by-path --path /<env>/<project>/<service>`.
+      # Allow only the expected app config prefixes.
+      {
+        Sid    = "SSMParameterReadRuntimeConfig"
+        Effect = "Allow"
+
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath"
+        ]
+
+        Resource = [
+          # GetParametersByPath may evaluate authz against the base path ARN
+          # (no trailing /*), so allow both.
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/backend-api",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/backend-api/*",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/web-driver",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/web-driver/*",
+
+          # Runtime environments use project_name (e.g. "d2-ride-booking") which can
+          # differ from the bootstrap stack's var.project (e.g. repo name).
+          # Allow the runtime project prefix used by envs/dev.
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/backend-api",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/backend-api/*",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/web-driver",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/web-driver/*"
+        ]
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #10: SSM Send Command to Tagged Instances
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {

@@ -96,6 +96,9 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Upload artifact to S3
         run: |
           aws s3 cp ../../web-driver-${{ steps.artifact.outputs.release_id }}.tar.gz \
@@ -106,6 +109,10 @@ jobs:
 
       - name: Deploy to EC2 using SSM (no SSH)
         run: |
+          # Needed so SSM can write Run Command output to CloudWatch Logs.
+          terraform -chdir=../../infra/terraform/envs/dev init -input=false
+          export SSM_SERVICE_ROLE_ARN="$(terraform -chdir=../../infra/terraform/envs/dev output -raw ssm_run_command_role_arn)"
+
           export AWS_REGION="${{ vars.AWS_REGION }}"
           export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
           export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
