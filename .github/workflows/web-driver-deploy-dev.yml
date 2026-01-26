@@ -64,6 +64,9 @@ jobs:
           NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
         run: npm run build
 
+      - name: Prune devDependencies (artifact only)
+        run: npm prune --omit=dev
+
       - name: Package deployment artifact
         id: artifact
         run: |
@@ -79,8 +82,9 @@ jobs:
           cp ecosystem.config.js ../../artifact-web-driver/
           cp package*.json ../../artifact-web-driver/
 
-          # NOTE: Do not ship node_modules from CI.
-          # Installing on-instance avoids subtle corruption/mismatch issues and keeps artifacts smaller.
+          # Ship production node_modules to keep deploy deterministic in private subnets
+          # (no reliance on outbound NPM access / NAT).
+          cp -r node_modules ../../artifact-web-driver/
 
           tar -czf ../../web-driver-$TIMESTAMP.tar.gz -C ../../artifact-web-driver .
           # Write the checksum with a stable filename (no path) so verification works after download.
@@ -102,90 +106,11 @@ jobs:
 
       - name: Deploy to EC2 using SSM (no SSH)
         run: |
-          INSTANCE_ID="${{ vars.DRIVER_EC2_INSTANCE_ID }}"
+          export AWS_REGION="${{ vars.AWS_REGION }}"
+          export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
+          export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+          export ENVIRONMENT="dev"
+          export PROJECT_NAME="ridebooking"
 
-          # Build the SSM command payload as JSON to avoid shell-quoting issues.
-          # (The previous inline --parameters 'commands=[...]' form breaks when a command contains single quotes,
-          # e.g. awk '{print $1}' ...)
-          cat > ssm-commands.json <<'EOF'
-          {
-            "commands": [
-              "set -euo pipefail",
-              "APP_ROOT=${{ vars.DRIVER_APP_ROOT }}",
-              "RELEASE_ID=${{ steps.artifact.outputs.release_id }}",
-
-              "mkdir -p $APP_ROOT/releases/$RELEASE_ID",
-              "cd /tmp",
-
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.tar.gz web-driver-$RELEASE_ID.tar.gz",
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.sha256 web-driver-$RELEASE_ID.sha256",
-              "sha256sum -c web-driver-$RELEASE_ID.sha256 || (SHA=$(awk '{print $1}' web-driver-$RELEASE_ID.sha256); echo $SHA  web-driver-$RELEASE_ID.tar.gz > web-driver-$RELEASE_ID.sha256.local; sha256sum -c web-driver-$RELEASE_ID.sha256.local)",
-
-              "tar -xzf web-driver-$RELEASE_ID.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
-              "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
-              "cd $APP_ROOT/current",
-
-              "test -f ecosystem.config.js || (echo Missing ecosystem.config.js in release artifact >&2; exit 1)",
-
-              "export NEXT_TELEMETRY_DISABLED=1",
-
-              "export HOME=/root",
-              "export PM2_HOME=/root/.pm2",
-
-              "npm ci --omit=dev",
-
-              "pm2 delete web-driver || true",
-
-              "pm2 startOrReload ecosystem.config.js --only web-driver",
-              "pm2 save",
-
-              "curl -fsS http://localhost:3000/health >/dev/null",
-
-              "cd $APP_ROOT/releases",
-              "ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
-
-              "echo Deployment successful: $RELEASE_ID"
-            ]
-          }
-          EOF
-
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy web-driver release ${{ steps.artifact.outputs.release_id }}" \
-            --parameters file://ssm-commands.json \
-            --query 'Command.CommandId' \
-            --output text)
-
-          echo "SSM CommandId=$COMMAND_ID"
-
-          # AWS CLI waiters default to ~100s (20 attempts). Use an explicit polling loop instead.
-          STATUS="InProgress"
-          for i in $(seq 1 90); do
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'Status' \
-              --output text || echo "Unknown")
-
-            echo "SSM Status=$STATUS (attempt $i/90)"
-
-            case "$STATUS" in
-              Success|Failed|Cancelled|TimedOut)
-                break
-                ;;
-            esac
-
-            sleep 10
-          done
-
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query '{Status:Status,ResponseCode:ResponseCode,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' \
-            --output json
-
-          if [ "$STATUS" != "Success" ]; then
-            exit 1
-          fi
+          bash ../../infra/scripts/deploy-web-driver.sh
 

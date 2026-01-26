@@ -97,7 +97,24 @@ data "aws_iam_policy_document" "backend_api" {
       "logs:PutLogEvents"
     ]
     resources = [
-      "arn:aws:logs:*:*:log-group:/aws/ec2/${var.environment}-${var.project_name}-backend*"
+      # Required log group: /<env>/backend-api
+      "arn:aws:logs:*:*:log-group:/${var.environment}/backend-api*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/backend-api*:*"
+    ]
+  }
+
+  # Runtime configuration from SSM Parameter Store (non-file based config).
+  # Deploy scripts on-instance read parameters and export to the process environment.
+  statement {
+    sid    = "SSMParameterReadRuntimeConfig"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath"
+    ]
+    resources = [
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/backend-api/*"
     ]
   }
 
@@ -238,7 +255,23 @@ data "aws_iam_policy_document" "driver_web" {
     ]
 
     resources = [
-      "arn:aws:logs:*:*:log-group:/aws/ec2/${var.environment}-${var.project_name}-driver*"
+      # Required log group: /<env>/web-driver
+      "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*:*"
+    ]
+  }
+
+  # Runtime configuration from SSM Parameter Store (non-file based config).
+  statement {
+    sid    = "SSMParameterReadRuntimeConfig"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath"
+    ]
+    resources = [
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/web-driver/*"
     ]
   }
 
