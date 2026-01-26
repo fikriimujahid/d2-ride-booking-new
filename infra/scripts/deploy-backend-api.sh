@@ -93,6 +93,8 @@ commands = [
   "if ! id -u appuser >/dev/null 2>&1; then useradd -m -g appuser -s /bin/bash appuser; fi",
 
   "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases ${APP_DIR}/shared ${APP_DIR}/shared/logs",
+  "install -m 0644 -o appuser -g appuser /dev/null ${APP_DIR}/shared/logs/backend-api-out.log",
+  "install -m 0644 -o appuser -g appuser /dev/null ${APP_DIR}/shared/logs/backend-api-error.log",
   "install -d -m 0755 -o root -g root /var/log/app",
 
   "cd /tmp",
