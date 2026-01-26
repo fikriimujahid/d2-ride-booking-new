@@ -59,7 +59,7 @@ commands = [
   f"S3_BUCKET={S3_BUCKET}",
   f"S3_KEY_TGZ={S3_KEY_TGZ}",
   f"S3_KEY_SHA={S3_KEY_SHA}",
-  f"PARAM_PATH={PARAM_PATH}",
+  f"export PARAM_PATH={PARAM_PATH}",
 
   "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases",
   "cd /tmp",
