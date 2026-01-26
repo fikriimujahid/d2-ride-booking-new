@@ -63,7 +63,9 @@ echo "[user-data] environment=$ENVIRONMENT service=$SERVICE_NAME pm2_app_name=$P
 # 1) OS packages
 # ------------------------------------------------------------------------------
 # Keep the bootstrap predictable: install only what we need.
-retry 3 5 dnf -y install ca-certificates curl tar gzip python3
+# Amazon Linux 2023 ships with curl-minimal by default; installing "curl" can
+# conflict and break bootstrap. curl-minimal provides the curl CLI we need.
+retry 3 5 dnf -y install ca-certificates curl-minimal tar gzip python3
 
 # Node.js 20 LTS
 if ! command -v node >/dev/null 2>&1 || ! node -v | grep -qE '^v20\.'; then
@@ -92,9 +94,16 @@ echo "[user-data] pm2=$(pm2 -v)"
 # 2) Create app runtime user + directories
 # ------------------------------------------------------------------------------
 # Dedicated non-login user (no SSH, no sudo)
+if ! getent group appuser >/dev/null 2>&1; then
+  echo "[user-data] Creating system group 'appuser'"
+  groupadd --system appuser
+fi
+
 if ! id -u appuser >/dev/null 2>&1; then
   echo "[user-data] Creating system user 'appuser'"
-  useradd --system --create-home --home-dir /home/appuser --shell /sbin/nologin appuser
+  # Use /bin/bash so systemd/pm2/runuser flows are reliable; SSH is still blocked
+  # by design (no keys, no password) and we do not grant sudo.
+  useradd --system --gid appuser --create-home --home-dir /home/appuser --shell /bin/bash appuser
 fi
 
 mkdir -p /opt/apps/backend-api /opt/apps/web-driver /var/log/app

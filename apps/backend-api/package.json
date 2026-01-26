@@ -1,7 +1,7 @@
 {
   "name": "backend-api",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "NestJS backend API",
   "license": "UNLICENSED",
   "scripts": {
