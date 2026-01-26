@@ -141,7 +141,7 @@ commands = [
   "chmod 0600 \"$ENV_EXPORT_FILE\"",
 
   "# Start/restart via PM2 as appuser",
-  "runuser -u appuser -- bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd ${APP_DIR}/current; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only ${PM2_APP_NAME} --update-env; pm2 save'",
+  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
   "rm -f \"$ENV_EXPORT_FILE\" || true",
 
   "# Health check (surface crash loops in CloudWatch/SSM output)",
