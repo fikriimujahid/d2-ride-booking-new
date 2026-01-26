@@ -27,9 +27,8 @@ set -euo pipefail
 : "${PROJECT_NAME:?Set PROJECT_NAME (e.g. d2-ride-booking)}"
 
 # Optional: stream SSM Run Command stdout/stderr to CloudWatch Logs.
-# If set, you can monitor deployments in CloudWatch without calling get-command-invocation.
-# Example: SSM_CLOUDWATCH_LOG_GROUP_NAME="/dev/ssm/deploy-backend-api"
-: "${SSM_CLOUDWATCH_LOG_GROUP_NAME:=}"
+# Defaults to /<env>/ssm/deploy-<service> so you get deploy logs automatically.
+: "${SSM_CLOUDWATCH_LOG_GROUP_NAME:=/${ENVIRONMENT}/ssm/deploy-backend-api}"
 # Optional: service role for SSM to publish output to CloudWatch/S3.
 # If your caller identity doesn't have logs permissions, set this to a role ARN that SSM can assume.
 : "${SSM_SERVICE_ROLE_ARN:=}"
@@ -37,6 +36,10 @@ set -euo pipefail
 # Optional: also store SSM output in S3.
 : "${SSM_OUTPUT_S3_BUCKET_NAME:=}"
 : "${SSM_OUTPUT_S3_KEY_PREFIX:=ssm-output/backend-api}"
+
+echo "[deploy] ssm_cloudwatch_log_group=${SSM_CLOUDWATCH_LOG_GROUP_NAME:-<disabled>}"
+echo "[deploy] ssm_service_role_arn=${SSM_SERVICE_ROLE_ARN:-<none>}"
+echo "[deploy] ssm_output_s3_bucket=${SSM_OUTPUT_S3_BUCKET_NAME:-<none>}"
 
 SERVICE_NAME="backend-api"
 PM2_APP_NAME="backend-api"
