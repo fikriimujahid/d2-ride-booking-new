@@ -104,7 +104,7 @@ enable_bastion = true
 
 # Optional SSH (generally not needed if using SSM)
 bastion_enable_ssh        = true
-bastion_ssh_allowed_cidrs = ["36.80.108.244/32", "103.136.58.0/24"] # Replace with your IP address
+bastion_ssh_allowed_cidrs = ["125.163.30.66/32", "103.136.58.0/24"] # Replace with your IP address
 
 # Only required if bastion_enable_ssh=true
 bastion_key_name = "fikri-platform-key"

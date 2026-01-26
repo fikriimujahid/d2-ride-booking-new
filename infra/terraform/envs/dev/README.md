@@ -325,8 +325,8 @@ DESCRIBE profiles;
 SELECT * FROM profiles LIMIT 10;
 
 -- Create IAM-authenticated user (run as admin)
-CREATE USER 'app_user'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
-GRANT SELECT, INSERT, UPDATE, DELETE ON ridebooking.* TO 'app_user'@'%';
+CREATE USER 'appuser'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+GRANT SELECT, INSERT, UPDATE, DELETE ON ridebooking.* TO 'appuser'@'%';
 FLUSH PRIVILEGES;
 
 -- Verify IAM user exists
