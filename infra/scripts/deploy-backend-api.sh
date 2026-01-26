@@ -33,6 +33,19 @@ set -euo pipefail
 # If your caller identity doesn't have logs permissions, set this to a role ARN that SSM can assume.
 : "${SSM_SERVICE_ROLE_ARN:=}"
 
+# Convenience: if SSM_SERVICE_ROLE_ARN isn't provided, try to read it from Terraform outputs.
+if [ -z "${SSM_SERVICE_ROLE_ARN}" ] && command -v terraform >/dev/null 2>&1; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  TF_ENV_DIR="${SCRIPT_DIR}/../terraform/envs/${ENVIRONMENT}"
+  if [ -d "${TF_ENV_DIR}" ]; then
+    if SSM_SERVICE_ROLE_ARN="$(terraform -chdir="${TF_ENV_DIR}" output -raw ssm_run_command_role_arn 2>/dev/null)"; then
+      :
+    else
+      SSM_SERVICE_ROLE_ARN=""
+    fi
+  fi
+fi
+
 # Optional: also store SSM output in S3.
 : "${SSM_OUTPUT_S3_BUCKET_NAME:=}"
 : "${SSM_OUTPUT_S3_KEY_PREFIX:=ssm-output/backend-api}"
@@ -49,6 +62,29 @@ S3_KEY_TGZ="apps/backend/${SERVICE_NAME}-${RELEASE_ID}.tar.gz"
 S3_KEY_SHA="apps/backend/${SERVICE_NAME}-${RELEASE_ID}.sha256"
 
 PARAM_PATH="/${ENVIRONMENT}/${PROJECT_NAME}/${SERVICE_NAME}"
+
+echo "[deploy] param_path=${PARAM_PATH}"
+
+# Local preflight: fail fast if the SSM runtime config path is wrong/missing.
+# This avoids sending SSM commands that are guaranteed to fail.
+if ! aws ssm get-parameters-by-path \
+  --region "$AWS_REGION" \
+  --path "$PARAM_PATH" \
+  --with-decryption \
+  --recursive \
+  --max-items 1 \
+  --query 'Parameters[0].Name' \
+  --output text >/tmp/ssm-preflight-backend-api.out 2>/tmp/ssm-preflight-backend-api.err; then
+  echo "[deploy] preflight failed reading SSM params at ${PARAM_PATH}" >&2
+  cat /tmp/ssm-preflight-backend-api.err >&2 || true
+  exit 1
+fi
+
+if [ "$(cat /tmp/ssm-preflight-backend-api.out)" = "None" ] || [ ! -s /tmp/ssm-preflight-backend-api.out ]; then
+  echo "[deploy] preflight found no SSM parameters under ${PARAM_PATH}." >&2
+  echo "[deploy] Check ENVIRONMENT/PROJECT_NAME/SERVICE_NAME (PROJECT_NAME should match Terraform, e.g. d2-ride-booking)." >&2
+  exit 1
+fi
 
 python3 - <<'PY' > /tmp/ssm-commands-backend-api.json
 import json
@@ -75,6 +111,10 @@ commands = [
   f"S3_KEY_TGZ={S3_KEY_TGZ}",
   f"S3_KEY_SHA={S3_KEY_SHA}",
   f"export PARAM_PATH={PARAM_PATH}",
+
+  "# Ensure runtime user exists (defensive; user-data should already create it)",
+  "if ! getent group appuser >/dev/null 2>&1; then groupadd appuser; fi",
+  "if ! id -u appuser >/dev/null 2>&1; then useradd -m -g appuser -s /bin/bash appuser; fi",
 
   "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases ${APP_DIR}/shared",
   "install -d -m 0755 -o root -g root /var/log/app",

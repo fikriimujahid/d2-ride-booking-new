@@ -103,6 +103,22 @@ data "aws_iam_policy_document" "backend_api" {
     ]
   }
 
+  # SSM Run Command CloudWatch output for deploy scripts.
+  # This is separate from app logs; SSM agent writes to this group.
+  statement {
+    sid    = "CloudWatchLogsWriteSSMDeploy"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:DescribeLogStreams",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*:*"
+    ]
+  }
+
   # Runtime configuration from SSM Parameter Store (non-file based config).
   # Deploy scripts on-instance read parameters and export to the process environment.
   statement {
@@ -261,6 +277,21 @@ data "aws_iam_policy_document" "driver_web" {
       # Required log group: /<env>/web-driver
       "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*",
       "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*:*"
+    ]
+  }
+
+  # SSM Run Command CloudWatch output for deploy scripts.
+  statement {
+    sid    = "CloudWatchLogsWriteSSMDeploy"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:DescribeLogStreams",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*:*"
     ]
   }
 
