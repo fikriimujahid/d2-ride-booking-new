@@ -110,7 +110,9 @@ jobs:
           export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
           export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
           export ENVIRONMENT="dev"
-          export PROJECT_NAME="ridebooking"
+          # Must match Terraform's infra/terraform/envs/dev/terraform.tfvars (project_name)
+          # because deploy scripts read runtime config from SSM under /<env>/<project>/<service>.
+          export PROJECT_NAME="d2-ride-booking"
 
           bash ../../infra/scripts/deploy-web-driver.sh
 
