@@ -16,6 +16,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { JsonLogger } from './logging/json-logger.service';
+import { createHttpLoggingMiddleware } from './logging/http-logging.middleware';
+import { AllExceptionsFilter } from './logging/all-exceptions.filter';
 
 async function bootstrap() {
   // Dev-only workaround for environments that intercept HTTPS with a custom/self-signed CA.
@@ -55,6 +57,16 @@ async function bootstrap() {
   const port = Number(config.get<number>('PORT') ?? 3000);
   const env = config.get<string>('NODE_ENV') ?? 'dev';
 
+  // Dev-friendly log levels.
+  // In production, keep noise down; in dev, enable verbose debugging.
+  logger.setLogLevels(env === 'production' ? ['log', 'warn', 'error'] : ['log', 'warn', 'error', 'debug', 'verbose']);
+
+  // Request/response logs (no headers/body; safe for dev + prod).
+  app.use(createHttpLoggingMiddleware(logger));
+
+  // Ensure 5xx errors always include stack traces in logs.
+  app.useGlobalFilters(new AllExceptionsFilter(logger));
+
   // CORS
   // - Local dev: allow Vite dev server(s) to call the API with Bearer tokens.
   // - Prod: enable only when explicitly configured (or when same-origin is used).
@@ -91,7 +103,12 @@ async function bootstrap() {
   // different subdomains (e.g., admin -> api). If you want tighter control,
   // set CORS_ORIGINS explicitly and it will override these defaults.
   const defaultOrigins = env === 'production' ? prodDefaultOrigins : devDefaultOrigins;
-  const allowList = corsOrigins.length > 0 ? corsOrigins : defaultOrigins;
+  // Best practice for dev ergonomics: treat configured origins as additive.
+  // This avoids accidentally blocking same-origin tools (e.g., Swagger at api.*)
+  // when CORS_ORIGINS is set by Terraform.
+  const allowList = Array.from(
+    new Set([...(defaultOrigins ?? []), ...(corsOrigins.length > 0 ? corsOrigins : [])])
+  );
 
   if (allowList.length > 0) {
 
@@ -177,6 +194,14 @@ async function bootstrap() {
   }
 
   logger.log('backend bootstrapping', { port, env });
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandledRejection', { reason: reason instanceof Error ? reason.stack ?? reason.message : String(reason) });
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('uncaughtException', { error: error.stack ?? error.message });
+  });
 
   process.on('SIGTERM', () => logger.log('received SIGTERM, shutting down gracefully'));
   process.on('SIGINT', () => logger.log('received SIGINT, shutting down gracefully'));
