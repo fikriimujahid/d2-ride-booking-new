@@ -225,3 +225,69 @@ resource "aws_iam_instance_profile" "driver_web" {
     }
   )
 }
+
+# ========================================
+# SSM SERVICE ROLE (Run Command output -> CloudWatch Logs)
+# ========================================
+# This role is used by SSM *service* when you enable --cloud-watch-output-config.
+# Without it, CloudWatch output can be enabled but still not appear.
+
+data "aws_iam_policy_document" "ssm_service_assume_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "sts:AssumeRole"
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["ssm.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ssm_run_command" {
+  name               = "${var.environment}-${var.project_name}-ssm-run-command"
+  assume_role_policy = data.aws_iam_policy_document.ssm_service_assume_role.json
+  description        = "Service role for SSM Run Command output to CloudWatch - ${var.environment}"
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.environment}-${var.project_name}-ssm-run-command"
+      Service     = "ssm-run-command"
+      Environment = var.environment
+    }
+  )
+}
+
+data "aws_iam_policy_document" "ssm_run_command_output" {
+  statement {
+    sid    = "CloudWatchLogsCreateDescribeGroups"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:DescribeLogGroups"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "CloudWatchLogsWriteSSMDeploy"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:DescribeLogStreams",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/ssm/deploy-*:*"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "ssm_run_command_output" {
+  name   = "ssm-run-command-output"
+  role   = aws_iam_role.ssm_run_command.id
+  policy = data.aws_iam_policy_document.ssm_run_command_output.json
+}
