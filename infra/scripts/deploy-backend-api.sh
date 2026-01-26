@@ -92,7 +92,7 @@ commands = [
   "if ! getent group appuser >/dev/null 2>&1; then groupadd appuser; fi",
   "if ! id -u appuser >/dev/null 2>&1; then useradd -m -g appuser -s /bin/bash appuser; fi",
 
-  "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases ${APP_DIR}/shared",
+  "install -d -m 0755 -o appuser -g appuser ${APP_DIR} ${APP_DIR}/releases ${APP_DIR}/shared ${APP_DIR}/shared/logs",
   "install -d -m 0755 -o root -g root /var/log/app",
 
   "cd /tmp",
@@ -118,7 +118,7 @@ commands = [
   "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
 
   "# Start/restart via PM2 as appuser",
-  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
+  "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" PM2_LOG_DIR=\"${APP_DIR}/shared/logs\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
   "rm -f \"$ENV_EXPORT_FILE\" || true",
 
   "# Health check (surface crash loops in CloudWatch/SSM output)",
