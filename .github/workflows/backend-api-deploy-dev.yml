@@ -54,8 +54,9 @@ jobs:
         run: npm prune --omit=dev
 
       # ------------------------------------------------------------
-      # 4. Package immutable artifact
+      # 4. Package immutable artifact (NO source copy to EC2)
       # ------------------------------------------------------------
+
       - name: Package deployment artifact
         id: artifact
         run: |
@@ -97,137 +98,12 @@ jobs:
       # ------------------------------------------------------------
       # 7. Deploy on EC2 via SSM (no SSH)
       # ------------------------------------------------------------
-      - name: Deploy to EC2 using SSM
+      - name: Deploy to EC2 using SSM (artifact pull + PM2 restart)
         run: |
-          set -euo pipefail
+          export AWS_REGION="${{ vars.AWS_REGION }}"
+          export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
+          export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+          export ENVIRONMENT="dev"
+          export PROJECT_NAME="ridebooking"
 
-          NAME_TAG="dev-d2-ride-booking-backend-api"
-
-          INSTANCE_ID="${{ vars.BACKEND_EC2_INSTANCE_ID }}"
-          DISCOVERED_INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=$NAME_TAG" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[].Instances[].InstanceId' \
-            --output text | awk '{print $1}')
-
-          if [ -z "${INSTANCE_ID:-}" ] || [ "${INSTANCE_ID:-}" = "null" ]; then
-            echo "BACKEND_EC2_INSTANCE_ID not set; using discovered instance id $DISCOVERED_INSTANCE_ID (Name tag: $NAME_TAG)"
-            INSTANCE_ID="$DISCOVERED_INSTANCE_ID"
-          elif [ -n "${DISCOVERED_INSTANCE_ID:-}" ] && [ "$INSTANCE_ID" != "$DISCOVERED_INSTANCE_ID" ]; then
-            echo "WARNING: BACKEND_EC2_INSTANCE_ID ($INSTANCE_ID) does not match discovered running instance ($DISCOVERED_INSTANCE_ID) for Name tag $NAME_TAG. Using discovered id." >&2
-            INSTANCE_ID="$DISCOVERED_INSTANCE_ID"
-          fi
-
-          if [ -z "${INSTANCE_ID:-}" ] || [ "${INSTANCE_ID:-}" = "None" ]; then
-            echo "Could not determine backend EC2 instance id. Set vars.BACKEND_EC2_INSTANCE_ID or vars.BACKEND_EC2_NAME_TAG." >&2
-            exit 1
-          fi
-
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy backend release ${{ steps.artifact.outputs.release_id }}" \
-            --parameters 'commands=[
-              "set -euo pipefail",
-              "APP_ROOT=${{ vars.APP_ROOT }}",
-              "RELEASE_ID=${{ steps.artifact.outputs.release_id }}",
-
-              "mkdir -p $APP_ROOT/releases/$RELEASE_ID",
-              "mkdir -p $APP_ROOT/shared",
-              "cd /tmp",
-
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.tar.gz backend-api-$RELEASE_ID.tar.gz",
-              "aws s3 cp s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/backend/backend-api-$RELEASE_ID.sha256 backend-api-$RELEASE_ID.sha256",
-
-              "sha256sum -c backend-api-$RELEASE_ID.sha256",
-
-              "tar -xzf backend-api-$RELEASE_ID.tar.gz -C $APP_ROOT/releases/$RELEASE_ID",
-
-              "# Ensure an AWS RDS TLS CA bundle exists locally (required for IAM auth)",
-              "RDS_CA_PATH=$APP_ROOT/shared/aws-rds-global-bundle.pem",
-              "if [ ! -s \"$RDS_CA_PATH\" ]; then ",
-              "  echo \"Downloading AWS RDS global CA bundle...\"",
-              "  if command -v curl >/dev/null 2>&1; then",
-              "    curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o \"$RDS_CA_PATH\"",
-              "  elif command -v wget >/dev/null 2>&1; then",
-              "    wget -qO \"$RDS_CA_PATH\" https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
-              "  else",
-              "    echo \"Neither curl nor wget found; cannot download RDS CA bundle\" >&2; exit 1",
-              "  fi",
-              "  chmod 644 \"$RDS_CA_PATH\"",
-              "fi",
-
-              "# Generate runtime .env (mirrors apps/backend-api/.env.example)",
-              "umask 077",
-              "cat > $APP_ROOT/releases/$RELEASE_ID/.env <<EOF",
-              "NODE_ENV=dev",
-              "PORT=3000",
-              "",
-              "AWS_REGION=${{ vars.AWS_REGION }}",
-              "",
-              "COGNITO_USER_POOL_ID=${{ secrets.COGNITO_USER_POOL_ID }}",
-              "COGNITO_CLIENT_ID=${{ secrets.COGNITO_CLIENT_ID }}",
-              "",
-
-              "# Explicit CORS allowlist for cross-subdomain web apps",
-              "CORS_ORIGINS=https://admin.d2.fikri.dev,https://driver.d2.fikri.dev,https://passenger.d2.fikri.dev",
-              "",
-              "DB_HOST=${{ secrets.DB_HOST }}",
-              "DB_PORT=${{ secrets.DB_PORT }}",
-              "DB_NAME=${{ secrets.DB_NAME }}",
-              "DB_USER=${{ secrets.DB_USER }}",
-              "DB_IAM_AUTH=true",
-              "DB_SSL=true",
-              "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.DB_SSL_REJECT_UNAUTHORIZED }}",
-              "DB_SSL_CA_PATH=$RDS_CA_PATH",
-              "EOF",
-              "chmod 600 $APP_ROOT/releases/$RELEASE_ID/.env",
-
-              "ln -sfn $APP_ROOT/releases/$RELEASE_ID $APP_ROOT/current",
-
-              "cd $APP_ROOT/current",
-
-              "test -f ecosystem.config.js || (echo Missing ecosystem.config.js in release artifact >&2; exit 1)",
-
-              "export HOME=/root",
-              "export PM2_HOME=/root/.pm2",
-
-              "pm2 startOrReload ecosystem.config.js --env development --update-env --only backend-api",
-              "pm2 save",
-
-              "# Quick sanity check: backend must answer locally before ALB can succeed",
-              "for i in $(seq 1 20); do curl -fsS http://127.0.0.1:3000/health >/dev/null && break; sleep 1; done",
-              "curl -fsS http://127.0.0.1:3000/health | head -c 300 || (echo 'Local /health check failed' >&2; pm2 logs backend-api --lines 200 || true; exit 1)",
-
-              "# Keep only last 3 releases (by RELEASE_ID name, not mtime)",
-              "cd $APP_ROOT/releases",
-              "ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
-
-              "echo Deployment successful: $RELEASE_ID"
-            ]' \
-            --query 'Command.CommandId' \
-            --output text)
-
-          echo "SSM CommandId=$COMMAND_ID"
-
-          # Wait for completion but don't let bash -e stop us from fetching stdout/stderr.
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" || true
-
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query 'Status' \
-            --output text || echo "Unknown")
-
-          echo "SSM Status=$STATUS"
-
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query '{Status:Status,ResponseCode:ResponseCode,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' \
-            --output json
-
-          if [ "$STATUS" != "Success" ]; then
-            exit 1
-          fi
+          bash infra/scripts/deploy-backend-api.sh

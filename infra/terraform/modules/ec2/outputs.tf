@@ -9,6 +9,6 @@ output "private_ip" {
 }
 
 output "log_group_name" {
-  value       = aws_cloudwatch_log_group.backend.name
+  value       = aws_cloudwatch_log_group.service.name
   description = "CloudWatch log group for this service"
 }
