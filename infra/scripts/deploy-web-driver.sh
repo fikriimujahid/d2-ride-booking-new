@@ -135,5 +135,36 @@ aws ssm list-command-invocations \
   --output json
 
 if [ "$STATUS" != "Success" ]; then
+  echo "[deploy] command failed; fetching per-instance stdout/stderr" >&2
+
+  mapfile -t INSTANCE_IDS < <(aws ssm list-command-invocations \
+    --region "$AWS_REGION" \
+    --command-id "$COMMAND_ID" \
+    --query 'CommandInvocations[].InstanceId' \
+    --output text | tr '\t' '\n' || true)
+
+  if [ "${#INSTANCE_IDS[@]}" -eq 0 ]; then
+    echo "[deploy] no instance IDs found for command; cannot fetch invocation output" >&2
+  fi
+
+  for INSTANCE_ID in "${INSTANCE_IDS[@]}"; do
+    [ -n "$INSTANCE_ID" ] || continue
+    echo "----- SSM get-command-invocation: $INSTANCE_ID (stdout) -----" >&2
+    aws ssm get-command-invocation \
+      --region "$AWS_REGION" \
+      --command-id "$COMMAND_ID" \
+      --instance-id "$INSTANCE_ID" \
+      --query 'StandardOutputContent' \
+      --output text || true
+
+    echo "----- SSM get-command-invocation: $INSTANCE_ID (stderr) -----" >&2
+    aws ssm get-command-invocation \
+      --region "$AWS_REGION" \
+      --command-id "$COMMAND_ID" \
+      --instance-id "$INSTANCE_ID" \
+      --query 'StandardErrorContent' \
+      --output text || true
+  done
+
   exit 1
 fi
