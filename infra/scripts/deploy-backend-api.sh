@@ -115,6 +115,7 @@ commands = [
   "ENV_EXPORT_FILE=$(mktemp /tmp/${SERVICE_NAME}-env.XXXXXX)",
   "python3 - <<'PY' > \"$ENV_EXPORT_FILE\"\nimport json, os, shlex, subprocess\npath=os.environ['PARAM_PATH']\nout=subprocess.check_output(['aws','ssm','get-parameters-by-path','--path',path,'--with-decryption','--recursive','--output','json'])\ndata=json.loads(out)\nparams=data.get('Parameters',[])\nif not params:\n    raise SystemExit(f'No SSM parameters found under {path}')\nfor p in params:\n    key=p['Name'].split('/')[-1]\n    val=p.get('Value','')\n    print(f'export {key}={shlex.quote(val)}')\nPY",
   "chmod 0600 \"$ENV_EXPORT_FILE\"",
+  "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
 
   "# Start/restart via PM2 as appuser",
   "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 startOrReload ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env; pm2 save'",
