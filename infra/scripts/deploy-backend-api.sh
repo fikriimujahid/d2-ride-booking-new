@@ -26,33 +26,9 @@ set -euo pipefail
 : "${ENVIRONMENT:?Set ENVIRONMENT (e.g. dev)}"
 : "${PROJECT_NAME:?Set PROJECT_NAME (e.g. d2-ride-booking)}"
 
-# Optional: stream SSM Run Command stdout/stderr to CloudWatch Logs.
-# Defaults to /<env>/ssm/deploy-<service> so you get deploy logs automatically.
-: "${SSM_CLOUDWATCH_LOG_GROUP_NAME:=/${ENVIRONMENT}/ssm/deploy-backend-api}"
-# Optional: service role for SSM to publish output to CloudWatch/S3.
-# If your caller identity doesn't have logs permissions, set this to a role ARN that SSM can assume.
-: "${SSM_SERVICE_ROLE_ARN:=}"
-
-# Convenience: if SSM_SERVICE_ROLE_ARN isn't provided, try to read it from Terraform outputs.
-if [ -z "${SSM_SERVICE_ROLE_ARN}" ] && command -v terraform >/dev/null 2>&1; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  TF_ENV_DIR="${SCRIPT_DIR}/../terraform/envs/${ENVIRONMENT}"
-  if [ -d "${TF_ENV_DIR}" ]; then
-    if SSM_SERVICE_ROLE_ARN="$(terraform -chdir="${TF_ENV_DIR}" output -raw ssm_run_command_role_arn 2>/dev/null)"; then
-      :
-    else
-      SSM_SERVICE_ROLE_ARN=""
-    fi
-  fi
-fi
-
-# Optional: also store SSM output in S3.
-: "${SSM_OUTPUT_S3_BUCKET_NAME:=}"
-: "${SSM_OUTPUT_S3_KEY_PREFIX:=ssm-output/backend-api}"
-
-echo "[deploy] ssm_cloudwatch_log_group=${SSM_CLOUDWATCH_LOG_GROUP_NAME:-<disabled>}"
-echo "[deploy] ssm_service_role_arn=${SSM_SERVICE_ROLE_ARN:-<none>}"
-echo "[deploy] ssm_output_s3_bucket=${SSM_OUTPUT_S3_BUCKET_NAME:-<none>}"
+# CloudWatch output for SSM Run Command is intentionally disabled in this script.
+# If you want persistent output, rely on the script's polling output in CI logs,
+# or add S3 output/service role support separately.
 
 SERVICE_NAME="backend-api"
 PM2_APP_NAME="backend-api"
@@ -166,10 +142,6 @@ COMMAND_ID=$(aws ssm send-command \
     "Key=tag:Environment,Values=${ENVIRONMENT}" \
     "Key=tag:Service,Values=${SERVICE_NAME}" \
     "Key=tag:ManagedBy,Values=terraform" \
-  ${SSM_SERVICE_ROLE_ARN:+--service-role-arn "$SSM_SERVICE_ROLE_ARN"} \
-  ${SSM_CLOUDWATCH_LOG_GROUP_NAME:+--cloud-watch-output-config "CloudWatchOutputEnabled=true,CloudWatchLogGroupName=${SSM_CLOUDWATCH_LOG_GROUP_NAME}"} \
-  ${SSM_OUTPUT_S3_BUCKET_NAME:+--output-s3-bucket-name "$SSM_OUTPUT_S3_BUCKET_NAME"} \
-  ${SSM_OUTPUT_S3_BUCKET_NAME:+--output-s3-key-prefix "$SSM_OUTPUT_S3_KEY_PREFIX"} \
   --parameters file:///tmp/ssm-commands-backend-api.json \
   --query 'Command.CommandId' \
   --output text)

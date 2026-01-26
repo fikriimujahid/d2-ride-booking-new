@@ -88,11 +88,3 @@ output "driver_web_instance_profile_arn" {
   value       = aws_iam_instance_profile.driver_web.arn
 }
 
-# ========================================
-# SSM RUN COMMAND OUTPUT ROLE
-# ========================================
-
-output "ssm_run_command_role_arn" {
-  description = "Service role ARN for SSM Run Command output to CloudWatch Logs"
-  value       = aws_iam_role.ssm_run_command.arn
-}

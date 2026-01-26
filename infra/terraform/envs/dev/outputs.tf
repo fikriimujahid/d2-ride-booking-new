@@ -161,19 +161,6 @@
 # }
 
 # ----------------------------------------
-# SSM Outputs
-# ----------------------------------------
-output "ssm_run_command_role_arn" {
-  description = "IAM service role ARN used by SSM Run Command (enables CloudWatch output)."
-  value       = module.iam.ssm_run_command_role_arn
-}
-
-output "ssm_deploy_backend_api_log_group_name" {
-  description = "CloudWatch Log Group that captures SSM deploy-backend-api command output."
-  value       = aws_cloudwatch_log_group.ssm_deploy_backend_api.name
-}
-
-# ----------------------------------------
 # Configuration Summary
 # ----------------------------------------
 output "environment_summary" {
