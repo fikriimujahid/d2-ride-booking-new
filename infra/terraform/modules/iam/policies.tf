@@ -121,6 +121,20 @@ data "aws_iam_policy_document" "backend_api" {
     ]
   }
 
+  # Optional: allow backend to sync profile attributes into Cognito.
+  # Used by apps/backend-api ProfileService (best-effort; failures are logged).
+  dynamic "statement" {
+    for_each = var.cognito_user_pool_arn != "" ? [1] : []
+    content {
+      sid    = "CognitoAdminUpdateUserAttributes"
+      effect = "Allow"
+      actions = [
+        "cognito-idp:AdminUpdateUserAttributes"
+      ]
+      resources = [var.cognito_user_pool_arn]
+    }
+  }
+
   # ========================================
   # STATEMENT 2: Secrets Manager - Read Permissions (CONDITIONAL)
   # ========================================

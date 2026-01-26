@@ -43,6 +43,15 @@ variable "aws_account_id" {
 }
 
 # ========================================
+# COGNITO VARIABLES
+# ========================================
+variable "cognito_user_pool_arn" {
+  description = "Optional Cognito User Pool ARN (enables backend to sync user attributes via AdminUpdateUserAttributes)"
+  type        = string
+  default     = ""
+}
+
+# ========================================
 # DEPLOYMENT ARTIFACTS (S3)
 # ========================================
 variable "deployment_artifacts_bucket_arn" {
