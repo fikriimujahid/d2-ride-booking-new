@@ -227,6 +227,9 @@ locals {
   runtime_param_prefix_backend = "/${var.environment}/${var.project_name}/backend-api"
   runtime_param_prefix_driver  = "/${var.environment}/${var.project_name}/web-driver"
 
+  # SSM Run Command output log groups (used by infra/scripts/deploy-*.sh when enabled)
+  ssm_deploy_backend_api_log_group = "/${var.environment}/ssm/deploy-backend-api"
+
   backend_api_runtime_params_base = {
     NODE_ENV             = "dev"
     PORT                 = "3000"
@@ -253,6 +256,16 @@ locals {
     NODE_ENV = "production"
     PORT     = "3000"
   }
+}
+
+resource "aws_cloudwatch_log_group" "ssm_deploy_backend_api" {
+  name              = local.ssm_deploy_backend_api_log_group
+  retention_in_days = 14
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-ssm-deploy-backend-api"
+    Environment = var.environment
+    Service     = "ssm-deploy-backend-api"
+  })
 }
 
 resource "aws_ssm_parameter" "backend_api_runtime" {

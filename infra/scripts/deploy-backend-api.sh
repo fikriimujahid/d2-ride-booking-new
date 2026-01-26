@@ -26,6 +26,18 @@ set -euo pipefail
 : "${ENVIRONMENT:?Set ENVIRONMENT (e.g. dev)}"
 : "${PROJECT_NAME:?Set PROJECT_NAME (e.g. d2-ride-booking)}"
 
+# Optional: stream SSM Run Command stdout/stderr to CloudWatch Logs.
+# If set, you can monitor deployments in CloudWatch without calling get-command-invocation.
+# Example: SSM_CLOUDWATCH_LOG_GROUP_NAME="/dev/ssm/deploy-backend-api"
+: "${SSM_CLOUDWATCH_LOG_GROUP_NAME:=}"
+# Optional: service role for SSM to publish output to CloudWatch/S3.
+# If your caller identity doesn't have logs permissions, set this to a role ARN that SSM can assume.
+: "${SSM_SERVICE_ROLE_ARN:=}"
+
+# Optional: also store SSM output in S3.
+: "${SSM_OUTPUT_S3_BUCKET_NAME:=}"
+: "${SSM_OUTPUT_S3_KEY_PREFIX:=ssm-output/backend-api}"
+
 SERVICE_NAME="backend-api"
 PM2_APP_NAME="backend-api"
 APP_DIR="/opt/apps/${SERVICE_NAME}"
@@ -111,6 +123,10 @@ COMMAND_ID=$(aws ssm send-command \
     "Key=tag:Environment,Values=${ENVIRONMENT}" \
     "Key=tag:Service,Values=${SERVICE_NAME}" \
     "Key=tag:ManagedBy,Values=terraform" \
+  ${SSM_SERVICE_ROLE_ARN:+--service-role-arn "$SSM_SERVICE_ROLE_ARN"} \
+  ${SSM_CLOUDWATCH_LOG_GROUP_NAME:+--cloud-watch-output-config "CloudWatchOutputEnabled=true,CloudWatchLogGroupName=${SSM_CLOUDWATCH_LOG_GROUP_NAME}"} \
+  ${SSM_OUTPUT_S3_BUCKET_NAME:+--output-s3-bucket-name "$SSM_OUTPUT_S3_BUCKET_NAME"} \
+  ${SSM_OUTPUT_S3_BUCKET_NAME:+--output-s3-key-prefix "$SSM_OUTPUT_S3_KEY_PREFIX"} \
   --parameters file:///tmp/ssm-commands-backend-api.json \
   --query 'Command.CommandId' \
   --output text)
