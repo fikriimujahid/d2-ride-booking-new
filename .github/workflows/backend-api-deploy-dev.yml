@@ -56,23 +56,68 @@ jobs:
       # ------------------------------------------------------------
       # 4. Package immutable artifact (NO source copy to EC2)
       # ------------------------------------------------------------
-
       - name: Package deployment artifact
+        # The "id" lets other steps reference outputs from THIS step using ${{ steps.artifact.outputs.xxx }}
+        # Example: step 6 uses ${{ steps.artifact.outputs.release_id }} to get the timestamp
+        # Without this id, other steps couldn't access the RELEASE_ID we generate here
         id: artifact
+        # "run: |" means execute a multi-line bash script
         run: |
+          # WHY: "set -e" means "exit immediately if ANY command fails"
           set -e
+
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          
+          # WHY: Store the timestamp in GitHub Actions "outputs" so later steps can use it
+          # GITHUB_OUTPUT is a special file that GitHub Actions reads to capture step outputs
+          # "release_id=$TIMESTAMP" creates an output variable named "release_id"
+          # Later steps reference it as: ${{ steps.artifact.outputs.release_id }}
           echo "release_id=$TIMESTAMP" >> $GITHUB_OUTPUT
 
+          # WHY: Create a temporary staging directory called "artifact"
+          # We need a clean directory to collect ONLY the files needed for deployment
           mkdir -p artifact
+          
+          # WHY: Copy the compiled TypeScript output (JavaScript files) to artifact directory
+          # "apps/backend-api/dist" contains the BUILT code (not source .ts files)
+          # NOTE: We deploy COMPILED code, not source code - faster startup, no build needed on server
           cp -r apps/backend-api/dist artifact/
+          
+          # WHY: Copy production dependencies (npm packages) needed to run the app
+          # "node_modules" contains all npm packages like NestJS, TypeScript runtime libs, etc.
+          # We ran "npm prune --omit=dev" in step 3, so this ONLY has production dependencies
+          # Without this, the app would crash immediately with "Cannot find module 'express'" errors
+          # OPTIMIZATION: We pruned devDependencies to save ~50-70% artifact size
+          # DEV-ONLY packages (like @types/*, eslint, jest) are NOT included
           cp -r apps/backend-api/node_modules artifact/
+          
+          # WHY: Copy PM2 configuration file that defines how to run the app
+          # "ecosystem.config.js" tells PM2: script to run, environment variables, instance count, etc.
+          # PM2 is a production process manager - keeps app running, auto-restarts on crash, load balancing
+          # Without this file, PM2 wouldn't know how to start your NestJS app
           cp apps/backend-api/ecosystem.config.js artifact/
+          
+          # WHY: Copy package.json and package-lock.json to artifact
+          # "package*.json" matches both files using wildcard
+          # These files define app metadata, version, and exact dependency versions
+          # package.json: Needed for "npm" commands and app metadata
+          # package-lock.json: Ensures EXACT same versions are used if you run "npm install" on EC2
           cp apps/backend-api/package*.json artifact/
 
+          # WHY: Create a compressed archive (tarball) of all files in artifact/ directory
+          # Result: Single compressed file containing dist/, node_modules/, ecosystem.config.js, package.json
+          # Without compression, a 200MB artifact becomes 40MB - saves S3 storage cost and upload time
+          # BEST PRACTICE: Always compress artifacts for faster network transfer
           tar -czf backend-api-$TIMESTAMP.tar.gz -C artifact .
 
           # Generate checksum for integrity verification
+          # WHY: Create SHA256 hash of the tar.gz file to verify integrity
+          # "sha256sum" calculates a cryptographic hash - like a fingerprint of the file
+          # If even ONE BYTE changes in the file, the hash is completely different
+          # The EC2 instance can download the artifact AND the .sha256 file
+          # Then verify: "Did the file arrive intact or was it corrupted during S3 transfer?"
+          # Without this, network corruption or incomplete downloads would go undetected
+          # SECURITY: Also prevents tampering - attacker can't modify artifact without changing hash
           sha256sum backend-api-$TIMESTAMP.tar.gz > backend-api-$TIMESTAMP.sha256
 
       # ------------------------------------------------------------
@@ -98,14 +143,26 @@ jobs:
       # ------------------------------------------------------------
       # 7. Deploy on EC2 via SSM (no SSH)
       # ------------------------------------------------------------
+      # WHY: This is the final deployment step - it triggers the actual deployment to EC2
+      # WHAT: This step runs a bash script that uses AWS SSM to deploy the artifact on EC2
+      # SECURITY: Uses SSM (Systems Manager) instead of SSH - no SSH keys, no open ports, no bastion host needed
+      # BEST PRACTICE: SSM is more secure than SSH because:
+      #   1. No SSH keys to manage or rotate
+      #   2. No port 22 (SSH port) exposed to internet
+      #   3. AWS manages authentication using IAM roles
+      #   4. All commands are logged in CloudTrail for audit
       - name: Deploy to EC2 using SSM (artifact pull + PM2 restart)
         run: |
+          # WHY: Export environment variables that the deploy script needs
+          # WHAT: "export" makes these variables available to child processes (the bash script we call at the end)
+          # Without "export", the variables would only exist in THIS shell, not in the script
+
           export AWS_REGION="${{ vars.AWS_REGION }}"
           export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
           export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
           export ENVIRONMENT="dev"
-          # Must match Terraform's infra/terraform/envs/dev/terraform.tfvars (project_name)
-          # because deploy scripts read runtime config from SSM under /<env>/<project>/<service>.
           export PROJECT_NAME="d2-ride-booking"
 
+          # WHY: Execute the actual deployment script that does the heavy lifting
+          # WHAT: Runs a bash script located in the repository at "infra/scripts/deploy-backend-api.sh"
           bash infra/scripts/deploy-backend-api.sh

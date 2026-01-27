@@ -3,6 +3,7 @@
 # ================================================================================
 environment  = "dev"
 project_name = "d2-ride-booking"
+domain_name = "fikri.dev"
 
 # ================================================================================
 # AWS CONFIGURATION
@@ -21,13 +22,6 @@ public_subnet_cidr_secondary = "10.20.2.0/24"
 
 private_subnet_cidr           = "10.20.11.0/24"
 private_subnet_cidr_secondary = "10.20.12.0/24"
-
-# ================================================================================
-# COGNITO CONFIGURATION (PHASE 3)
-# ================================================================================
-# User authentication settings
-
-domain_name = "d2.fikri.dev"
 
 # --------------------------------------------------------------------------------
 # ROUTE53 HOSTED ZONE ID (LEAVE BLANK TO SKIP ALIAS CREATION)
