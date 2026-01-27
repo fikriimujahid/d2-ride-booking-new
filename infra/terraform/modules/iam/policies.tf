@@ -345,3 +345,160 @@ data "aws_iam_policy_document" "driver_web" {
     }
   }
 }
+
+# ========================================
+# CONSOLIDATED APP HOST PERMISSION POLICY (DEV ONLY)
+# ========================================
+# Merges permissions from backend-api and web-driver for single EC2 instance
+# PROD: Must split into separate policies for security isolation
+data "aws_iam_policy_document" "app_host" {
+  # CloudWatch Logs - Both backend-api and web-driver
+  statement {
+    sid    = "CloudWatchLogsWrite"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      # backend-api logs
+      "arn:aws:logs:*:*:log-group:/${var.environment}/backend-api*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/backend-api*:*",
+      # web-driver logs
+      "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*",
+      "arn:aws:logs:*:*:log-group:/${var.environment}/web-driver*:*"
+    ]
+  }
+
+  # SSM Parameter Store - Both backend-api and web-driver runtime config
+  statement {
+    sid    = "SSMParameterReadRuntimeConfig"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath"
+    ]
+    resources = [
+      # backend-api config
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/backend-api",
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/backend-api/*",
+      # web-driver config
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/web-driver",
+      "arn:aws:ssm:*:*:parameter/${var.environment}/${var.project_name}/web-driver/*"
+    ]
+  }
+
+  # Cognito Admin (backend-api only)
+  dynamic "statement" {
+    for_each = var.cognito_user_pool_arn != "" ? [1] : []
+    content {
+      sid    = "CognitoAdminUpdateUserAttributes"
+      effect = "Allow"
+      actions = [
+        "cognito-idp:AdminUpdateUserAttributes"
+      ]
+      resources = [var.cognito_user_pool_arn]
+    }
+  }
+
+  # Secrets Manager - backend-api only
+  dynamic "statement" {
+    for_each = length(var.secrets_manager_arns) > 0 ? [1] : []
+    content {
+      sid    = "SecretsManagerReadDBCreds"
+      effect = "Allow"
+      actions = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ]
+      resources = var.secrets_manager_arns
+    }
+  }
+
+  # KMS - backend-api only (for Secrets Manager decryption)
+  dynamic "statement" {
+    for_each = length(var.secrets_manager_arns) > 0 ? [1] : []
+    content {
+      sid    = "KMSDecryptSecrets"
+      effect = "Allow"
+      actions = [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = ["secretsmanager.*.amazonaws.com"]
+      }
+    }
+  }
+
+  # RDS IAM Authentication - backend-api only
+  dynamic "statement" {
+    for_each = var.rds_resource_id != "" ? [1] : []
+    content {
+      sid    = "RDSIAMAuthentication"
+      effect = "Allow"
+      actions = [
+        "rds-db:connect"
+      ]
+      resources = [
+        "arn:aws:rds-db:${var.aws_region}:${var.aws_account_id}:dbuser:${var.rds_resource_id}/${var.rds_db_user}"
+      ]
+    }
+  }
+
+  # S3 - Deployment artifacts for both backend-api and web-driver
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ReadDeploymentArtifacts"
+      effect = "Allow"
+      actions = [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ]
+      resources = [
+        # backend-api artifacts
+        "${var.deployment_artifacts_bucket_arn}/backend/*",
+        "${var.deployment_artifacts_bucket_arn}/apps/backend/*",
+        # web-driver artifacts
+        "${var.deployment_artifacts_bucket_arn}/apps/frontend/web-driver-*",
+        "${var.deployment_artifacts_bucket_arn}/apps/frontend/web-driver/*"
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.deployment_artifacts_bucket_arn != "" ? [1] : []
+    content {
+      sid    = "S3ListDeploymentArtifacts"
+      effect = "Allow"
+      actions = [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ]
+      resources = [
+        var.deployment_artifacts_bucket_arn
+      ]
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values = [
+          # backend-api prefixes
+          "backend/*",
+          "backend",
+          "apps/backend/*",
+          "apps/backend",
+          # web-driver prefixes
+          "apps/frontend/web-driver-*",
+          "apps/frontend/web-driver/*",
+          "apps/frontend/web-driver"
+        ]
+      }
+    }
+  }
+}

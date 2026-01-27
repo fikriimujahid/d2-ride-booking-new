@@ -463,21 +463,18 @@ PY
 # --comment = description shown in AWS console (for auditing)
 # --targets = select EC2 instances by tags (instead of explicit instance IDs)
 #   Key=tag:Environment,Values=${ENVIRONMENT} = match Environment tag
-#   Key=tag:Service,Values=${SERVICE_NAME} = match Service tag
+#   Key=tag:ServiceBackend,Values=${SERVICE_NAME} = match ServiceBackend tag (consolidated instance)
 #   Key=tag:ManagedBy,Values=terraform = match ManagedBy tag
 #   Why tags: Dynamic targeting - works even when instances change
-#   What breaks: If EC2 tags don't match, no instances will be found
-# --parameters file:///tmp/ssm-commands-backend-api.json = load commands from JSON file
-# --query 'Command.CommandId' = extract just the CommandId from response
-# --output text = output as plain text (not JSON)
-# Why: CommandId is used to poll for status and fetch output
+#   DEV consolidation: Uses ServiceBackend tag to target the consolidated app-host instance
+#   PROD: Will use separate instances with Service=backend-api tag
 COMMAND_ID=$(aws ssm send-command \
   --region "$AWS_REGION" \
   --document-name "AWS-RunShellScript" \
   --comment "Deploy ${SERVICE_NAME} ${RELEASE_ID}" \
   --targets \
     "Key=tag:Environment,Values=${ENVIRONMENT}" \
-    "Key=tag:Service,Values=${SERVICE_NAME}" \
+    "Key=tag:ServiceBackend,Values=${SERVICE_NAME}" \
     "Key=tag:ManagedBy,Values=terraform" \
   --parameters file:///tmp/ssm-commands-backend-api.json \
   --query 'Command.CommandId' \

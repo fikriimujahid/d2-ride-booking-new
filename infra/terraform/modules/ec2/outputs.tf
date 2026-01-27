@@ -8,7 +8,7 @@ output "private_ip" {
   description = "EC2 private IP (ALB target or SSM target)"
 }
 
-output "log_group_name" {
-  value       = aws_cloudwatch_log_group.service.name
-  description = "CloudWatch log group for this service"
+output "log_group_names" {
+  value       = { for k, v in aws_cloudwatch_log_group.service : k => v.name }
+  description = "CloudWatch log groups for services on this instance"
 }

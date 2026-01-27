@@ -1,15 +1,30 @@
 #!/bin/bash
 
 # ==============================================================================
-# EC2 BOOTSTRAP (Amazon Linux 2023)
+# EC2 BOOTSTRAP (Amazon Linux 2023) - CONSOLIDATED APP HOST
 # ==============================================================================
 # Goals:
 # - Deterministic + idempotent bootstrap
 # - Install runtime dependencies (Node.js LTS 20, PM2, CloudWatch agent)
 # - Create least-privileged runtime user (appuser) and standard directories
+# - Support BOTH backend-api and web-driver on ONE instance (DEV only)
 # - Enable SSM access (NO SSH)
 # - Configure CloudWatch Logs collection for PM2 stdout/stderr
 # - DO NOT start any application here (apps start only after artifact deploy)
+#
+# Directory structure (DEV consolidation):
+# - /opt/apps/backend-api/{releases,shared,current}
+# - /opt/apps/web-driver/{releases,shared,current}
+# - /var/log/app/backend-api/
+# - /var/log/app/web-driver/
+#
+# PM2 processes:
+# - backend-api: port 3000
+# - web-driver:  port 3001
+#
+# CloudWatch log groups:
+# - /dev/backend-api
+# - /dev/web-driver
 #
 # Deployment flow (documented here and re-used in GitHub Actions + SSM):
 # 1) CI builds immutable artifact
@@ -26,6 +41,7 @@
 # - Logs are visible in CloudWatch
 # - SSM Run Command works reliably (no SSH)
 # - backend-api and web-driver stay up after deploy
+# - Restarting one app does NOT affect the other
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -54,10 +70,11 @@ retry() {
 
 ENVIRONMENT="${environment}"
 SERVICE_NAME="${service_name}"
-PM2_APP_NAME="${pm2_app_name}"
-CW_LOG_GROUP_NAME="${log_group_name}"
+ENABLE_BACKEND_API="${enable_backend_api}"
+ENABLE_WEB_DRIVER="${enable_web_driver}"
 
-echo "[user-data] environment=$ENVIRONMENT service=$SERVICE_NAME pm2_app_name=$PM2_APP_NAME"
+echo "[user-data] environment=$ENVIRONMENT service=$SERVICE_NAME"
+echo "[user-data] enable_backend_api=$ENABLE_BACKEND_API enable_web_driver=$ENABLE_WEB_DRIVER"
 
 # ------------------------------------------------------------------------------
 # 1) OS packages
@@ -91,7 +108,7 @@ fi
 echo "[user-data] pm2=$(pm2 -v)"
 
 # ------------------------------------------------------------------------------
-# 2) Create app runtime user + directories
+# 2) Create app runtime user + directories (BOTH apps)
 # ------------------------------------------------------------------------------
 # Dedicated non-login user (no SSH, no sudo)
 if ! getent group appuser >/dev/null 2>&1; then
@@ -106,13 +123,15 @@ if ! id -u appuser >/dev/null 2>&1; then
   useradd --system --gid appuser --create-home --home-dir /home/appuser --shell /bin/bash appuser
 fi
 
-mkdir -p /opt/apps/backend-api /opt/apps/web-driver /var/log/app
+# Create directories for BOTH applications
+mkdir -p /opt/apps/backend-api /opt/apps/web-driver /var/log/app/backend-api /var/log/app/web-driver
 
 # Service-specific layout used by deploy automation.
-mkdir -p "/opt/apps/$${SERVICE_NAME}/releases" "/opt/apps/$${SERVICE_NAME}/shared"
+mkdir -p /opt/apps/backend-api/releases /opt/apps/backend-api/shared
+mkdir -p /opt/apps/web-driver/releases /opt/apps/web-driver/shared
 
-chown -R appuser:appuser /opt/apps/backend-api /opt/apps/web-driver /var/log/app
-chmod 0755 /opt/apps /opt/apps/backend-api /opt/apps/web-driver /var/log/app || true
+chown -R appuser:appuser /opt/apps /var/log/app
+chmod 0755 /opt/apps /opt/apps/backend-api /opt/apps/web-driver /var/log/app /var/log/app/backend-api /var/log/app/web-driver || true
 
 # ------------------------------------------------------------------------------
 # 3) Ensure SSM agent is enabled (no SSH access)
@@ -137,19 +156,23 @@ systemctl enable pm2-appuser
 systemctl start pm2-appuser || true
 
 # ------------------------------------------------------------------------------
-# 5) CloudWatch Logs agent: collect PM2 stdout/stderr
+# 5) CloudWatch Logs agent: collect PM2 stdout/stderr for BOTH apps
 # ------------------------------------------------------------------------------
 # Required log group naming:
 # - /dev/backend-api
 # - /dev/web-driver
 #
-# NOTE: The instance role must allow logs:CreateLogStream + PutLogEvents to CW_LOG_GROUP_NAME.
+# NOTE: The instance role must allow logs:CreateLogStream + PutLogEvents to both log groups.
 
 # Ensure PM2 log directory exists and is owned by appuser
 install -d -m 0755 -o appuser -g appuser /home/appuser/.pm2/logs
-touch "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-out.log" "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-error.log" || true
-chown appuser:appuser "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-out.log" "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-error.log" || true
 
+# Create placeholder log files for both apps (will be created by PM2 on first run)
+touch /home/appuser/.pm2/logs/backend-api-out.log /home/appuser/.pm2/logs/backend-api-error.log || true
+touch /home/appuser/.pm2/logs/web-driver-out.log /home/appuser/.pm2/logs/web-driver-error.log || true
+chown appuser:appuser /home/appuser/.pm2/logs/*.log || true
+
+# Configure CloudWatch agent to collect logs from BOTH applications
 cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
 {
   "logs": {
@@ -157,18 +180,28 @@ cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
       "files": {
         "collect_list": [
           {
-            "file_path": "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-out.log",
-            "log_group_name": "$${CW_LOG_GROUP_NAME}",
+            "file_path": "/home/appuser/.pm2/logs/backend-api-out.log",
+            "log_group_name": "/$${ENVIRONMENT}/backend-api",
             "log_stream_name": "{instance_id}-stdout"
           },
           {
-            "file_path": "/home/appuser/.pm2/logs/$${PM2_APP_NAME}-error.log",
-            "log_group_name": "$${CW_LOG_GROUP_NAME}",
+            "file_path": "/home/appuser/.pm2/logs/backend-api-error.log",
+            "log_group_name": "/$${ENVIRONMENT}/backend-api",
+            "log_stream_name": "{instance_id}-stderr"
+          },
+          {
+            "file_path": "/home/appuser/.pm2/logs/web-driver-out.log",
+            "log_group_name": "/$${ENVIRONMENT}/web-driver",
+            "log_stream_name": "{instance_id}-stdout"
+          },
+          {
+            "file_path": "/home/appuser/.pm2/logs/web-driver-error.log",
+            "log_group_name": "/$${ENVIRONMENT}/web-driver",
             "log_stream_name": "{instance_id}-stderr"
           },
           {
             "file_path": "/var/log/user-data.log",
-            "log_group_name": "$${CW_LOG_GROUP_NAME}",
+            "log_group_name": "/$${ENVIRONMENT}/backend-api",
             "log_stream_name": "{instance_id}-user-data"
           }
         ]
@@ -182,3 +215,11 @@ systemctl enable amazon-cloudwatch-agent
 systemctl restart amazon-cloudwatch-agent || systemctl start amazon-cloudwatch-agent
 
 echo "[user-data] Bootstrap complete at $(date -Is)"
+echo "[user-data] Directories created:"
+echo "[user-data]   - /opt/apps/backend-api"
+echo "[user-data]   - /opt/apps/web-driver"
+echo "[user-data] CloudWatch logs configured for:"
+echo "[user-data]   - /$${ENVIRONMENT}/backend-api"
+echo "[user-data]   - /$${ENVIRONMENT}/web-driver"
+echo "[user-data] PM2 will be managed by appuser systemd unit"
+echo "[user-data] Applications will start after deployment via SSM"
