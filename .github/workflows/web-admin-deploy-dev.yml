@@ -138,10 +138,5 @@ jobs:
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN }} \
-            # "--paths" = which files to invalidate
-            # "/*" = wildcard meaning "all files at all paths"
-            # WHY "/*"? Ensures all cached content is refreshed
-            # COST: CloudFront allows 1000 free invalidations/month, then charges per request
-            # Alternative: versioned filenames (e.g., app.abc123.js) avoid invalidation need
             --paths "/*"
 
