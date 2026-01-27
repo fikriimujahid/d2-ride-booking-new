@@ -61,6 +61,12 @@ variable "enable_driver_record" {
   default     = false
 }
 
+variable "enable_api_record" {
+  description = "Whether to create the api.<domain> Route53 record pointing at the ALB. Must be a plan-time boolean."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags (not directly used by Route53 records, kept for consistency)"
   type        = map(string)

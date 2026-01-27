@@ -58,3 +58,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_backend_api" {
+  description = "Enable backend-api on this instance (for consolidated app-host)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_web_driver" {
+  description = "Enable web-driver on this instance (for consolidated app-host)"
+  type        = bool
+  default     = false
+}

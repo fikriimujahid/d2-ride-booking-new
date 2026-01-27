@@ -18,6 +18,11 @@ output "driver_web_security_group_id" {
   value       = aws_security_group.driver_web.id
 }
 
+output "app_host_security_group_id" {
+  description = "Security group ID for consolidated app host (DEV only)"
+  value       = aws_security_group.app_host.id
+}
+
 # ========================================
 # COMPREHENSIVE SECURITY GROUP SUMMARY
 # ========================================

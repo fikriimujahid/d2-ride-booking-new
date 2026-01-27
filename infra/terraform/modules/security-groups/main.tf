@@ -614,3 +614,169 @@ resource "aws_vpc_security_group_egress_rule" "driver_web_vpc_http" {
 #   - Backend API egress rule references the RDS SG via variable
 #
 # SEE: modules/rds/main.tf for RDS security group definition
+
+# ========================================
+# SECTION 5: CONSOLIDATED APP HOST SECURITY GROUP (DEV ONLY)
+# ========================================
+# DEV-ONLY: Combined security group for backend-api and web-driver
+# PROD: Must use separate security groups for proper isolation
+#
+# PORTS:
+# - 3000: backend-api
+# - 3001: web-driver
+#
+# INBOUND:
+# - HTTP from ALB to both ports
+#
+# OUTBOUND:
+# - HTTPS/HTTP within VPC
+# - MySQL to RDS
+# - S3 for deployment artifacts
+# ========================================
+
+resource "aws_security_group" "app_host" {
+  name        = "${var.environment}-${var.project_name}-app-host"
+  description = "Security group for consolidated app host (backend-api + web-driver) - ${var.environment}"
+  vpc_id      = var.vpc_id
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.environment}-${var.project_name}-app-host"
+      Environment = var.environment
+      Service     = "app-host"
+      Services    = "backend-api,web-driver"
+      Comment     = "DEV-ONLY: Consolidated SG. PROD must use separate SGs."
+    }
+  )
+}
+
+# ----------------------------------------
+# App Host Inbound Rules: HTTP from ALB on ports 3000 and 3001
+# ----------------------------------------
+
+resource "aws_vpc_security_group_ingress_rule" "app_host_http_alb_backend" {
+  security_group_id = aws_security_group.app_host.id
+
+  description                  = "Allow HTTP from ALB to backend-api (port 3000)"
+  referenced_security_group_id = aws_security_group.alb.id
+  from_port                    = 3000
+  to_port                      = 3000
+  ip_protocol                  = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-http-alb-backend"
+    }
+  )
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_host_http_alb_driver" {
+  security_group_id = aws_security_group.app_host.id
+
+  description                  = "Allow HTTP from ALB to web-driver (port 3001)"
+  referenced_security_group_id = aws_security_group.alb.id
+  from_port                    = 3001
+  to_port                      = 3001
+  ip_protocol                  = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-http-alb-driver"
+    }
+  )
+}
+
+# ----------------------------------------
+# App Host Outbound Rules: Combined from backend-api and web-driver
+# ----------------------------------------
+
+resource "aws_vpc_security_group_egress_rule" "app_host_https_vpc" {
+  security_group_id = aws_security_group.app_host.id
+
+  description = "Allow HTTPS within VPC"
+  cidr_ipv4   = var.vpc_cidr
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-https-vpc"
+    }
+  )
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_host_https_internet" {
+  count             = var.enable_nat_gateway ? 1 : 0
+  security_group_id = aws_security_group.app_host.id
+
+  description = "Allow HTTPS to internet (via NAT)"
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-https-internet"
+    }
+  )
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_host_s3_https" {
+  count             = var.enable_nat_gateway ? 1 : 0
+  security_group_id = aws_security_group.app_host.id
+
+  description    = "Allow HTTPS to S3 (artifact downloads)"
+  prefix_list_id = data.aws_prefix_list.s3.id
+  from_port      = 443
+  to_port        = 443
+  ip_protocol    = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-https-s3"
+    }
+  )
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_host_vpc_http" {
+  security_group_id = aws_security_group.app_host.id
+
+  description = "Allow HTTP within VPC"
+  cidr_ipv4   = var.vpc_cidr
+  from_port   = 80
+  to_port     = 80
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-http-vpc"
+    }
+  )
+}
+
+# MySQL to RDS (for backend-api on consolidated instance)
+resource "aws_vpc_security_group_egress_rule" "app_host_mysql_rds" {
+  security_group_id = aws_security_group.app_host.id
+
+  description = "Allow MySQL to RDS"
+  cidr_ipv4   = var.vpc_cidr
+  from_port   = 3306
+  to_port     = 3306
+  ip_protocol = "tcp"
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.environment}-${var.project_name}-app-host-mysql-rds"
+    }
+  )
+}

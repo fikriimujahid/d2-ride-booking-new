@@ -1,9 +1,13 @@
 const path = require('path');
 
+// DEV consolidation: backend-api runs on port 3000, web-driver on port 3001
+// Logs go to /home/appuser/.pm2/logs/ and are shipped to CloudWatch by the agent
+// Log group: /dev/backend-api
+
 const defaultLogDir =
   process.platform === 'win32'
     ? path.join(__dirname, 'logs')
-    : '/opt/apps/backend-api/shared/logs';
+    : '/home/appuser/.pm2/logs';
 
 const logDir = process.env.PM2_LOG_DIR || defaultLogDir;
 
@@ -21,13 +25,16 @@ module.exports = {
       out_file: path.join(logDir, 'backend-api-out.log'),
       error_file: path.join(logDir, 'backend-api-error.log'),
       env: {
-        NODE_ENV: 'dev'
+        NODE_ENV: 'dev',
+        PORT: '3000'  // backend-api port (consolidated instance)
       },
       env_development: {
-        NODE_ENV: 'dev'
+        NODE_ENV: 'dev',
+        PORT: '3000'
       },
       env_production: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: '3000'
       }
     }
   ]

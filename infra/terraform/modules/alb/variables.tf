@@ -46,6 +46,12 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "enable_https" {
+  description = "Whether to enable HTTPS listener. Must be a plan-time boolean (do not derive from resource attributes)."
+  type        = bool
+  default     = true
+}
+
 variable "alb_security_group_id" {
   description = "Security group for the ALB"
   type        = string

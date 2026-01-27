@@ -226,6 +226,64 @@ resource "aws_iam_instance_profile" "driver_web" {
   )
 }
 # ========================================
+# CONSOLIDATED APP HOST ROLE (DEV ONLY)
+# ========================================
+# DEV-ONLY: Single role for both backend-api and web-driver on one EC2 instance
+# PROD: Must use separate roles for security isolation
+#
+# PERMISSIONS MERGED:
+# - CloudWatch Logs (both /dev/backend-api and /dev/web-driver)
+# - SSM Parameter Store (both service configs)
+# - RDS IAM Auth (backend-api only)
+# - S3 deployment artifacts (both apps/backend and apps/frontend)
+# - Cognito (backend-api only)
+# - Secrets Manager (backend-api only, if configured)
+resource "aws_iam_role" "app_host" {
+  name               = "${var.environment}-${var.project_name}-app-host"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+  description        = "IAM role for consolidated app host (backend-api + web-driver) - ${var.environment}"
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.environment}-${var.project_name}-app-host"
+      Service     = "app-host"
+      Services    = "backend-api+web-driver"
+      Environment = var.environment
+      Comment     = "DEV-ONLY Consolidated role for backend-api and web-driver"
+    }
+  )
+}
+
+# Attach consolidated permissions
+resource "aws_iam_role_policy" "app_host" {
+  name   = "app-host-policy"
+  role   = aws_iam_role.app_host.id
+  policy = data.aws_iam_policy_document.app_host.json
+}
+
+# SSM managed instance core
+resource "aws_iam_role_policy_attachment" "app_host_ssm_core" {
+  role       = aws_iam_role.app_host.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Instance profile for consolidated app host
+resource "aws_iam_instance_profile" "app_host" {
+  name = "${var.environment}-${var.project_name}-app-host"
+  role = aws_iam_role.app_host.name
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.environment}-${var.project_name}-app-host"
+      Environment = var.environment
+      Comment     = "DEV-ONLY: Consolidated instance profile"
+    }
+  )
+}
+
+# ========================================
 
 # SSM SERVICE ROLE (Run Command output -> CloudWatch Logs)
 

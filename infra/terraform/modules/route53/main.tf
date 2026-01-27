@@ -87,6 +87,29 @@ resource "aws_route53_record" "passenger_cname" {
 }
 
 # -----------------------------------------------------------------------------
+# API DNS (to ALB)
+# -----------------------------------------------------------------------------
+resource "aws_route53_record" "api" {
+  count   = var.enable_api_record ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = var.alb_dns_name
+    zone_id                = var.alb_zone_id
+    evaluate_target_health = true
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.alb_dns_name != "" && var.alb_zone_id != ""
+      error_message = "enable_api_record=true requires alb_dns_name and alb_zone_id to be set (usually from the ALB module outputs)."
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
 # DRIVER DNS (to ALB)
 # -----------------------------------------------------------------------------
 resource "aws_route53_record" "driver" {
