@@ -47,6 +47,12 @@ variable "log_retention_days" {
 # --------------------------------------------------------------------------------
 # EC2 MONITORING CONFIGURATION
 # --------------------------------------------------------------------------------
+variable "enable_ec2_monitoring" {
+  type        = bool
+  description = "Enable EC2 instance monitoring (must be known at plan time)"
+  default     = false
+}
+
 variable "ec2_instance_id" {
   type        = string
   description = "EC2 instance ID to monitor (the consolidated app-host instance running both backend-api and web-driver)"
@@ -62,6 +68,12 @@ variable "ec2_instance_name" {
 # --------------------------------------------------------------------------------
 # RDS MONITORING CONFIGURATION
 # --------------------------------------------------------------------------------
+variable "enable_rds_monitoring" {
+  type        = bool
+  description = "Enable RDS instance monitoring (must be known at plan time)"
+  default     = false
+}
+
 variable "rds_instance_id" {
   type        = string
   description = "RDS instance identifier to monitor"

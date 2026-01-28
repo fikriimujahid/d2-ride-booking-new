@@ -78,7 +78,7 @@
 #    - Adding read replicas (PROD only)
 #
 resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
-  count = var.enable_alarms && var.rds_instance_id != "" ? 1 : 0
+  count = var.enable_alarms && var.enable_rds_monitoring ? 1 : 0
 
   alarm_name          = "${var.environment}-${var.project_name}-rds-cpu-high"
   comparison_operator = "GreaterThanThreshold"
@@ -145,7 +145,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
 # 4. Consider reducing binary log retention
 #
 resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
-  count = var.enable_alarms && var.rds_instance_id != "" ? 1 : 0
+  count = var.enable_alarms && var.enable_rds_monitoring ? 1 : 0
 
   alarm_name          = "${var.environment}-${var.project_name}-rds-storage-low"
   comparison_operator = "LessThanThreshold"
@@ -211,7 +211,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
 #    - Fixing connection leaks in code
 #
 resource "aws_cloudwatch_metric_alarm" "rds_connections_high" {
-  count = var.enable_alarms && var.rds_instance_id != "" ? 1 : 0
+  count = var.enable_alarms && var.enable_rds_monitoring ? 1 : 0
 
   alarm_name          = "${var.environment}-${var.project_name}-rds-connections-high"
   comparison_operator = "GreaterThanThreshold"

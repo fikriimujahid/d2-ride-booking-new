@@ -643,12 +643,14 @@ module "cloudwatch" {
   log_retention_days = var.log_retention_days
 
   # EC2 monitoring (consolidated app-host instance)
-  ec2_instance_id   = var.enable_ec2_backend ? module.ec2_app_host[0].instance_id : ""
-  ec2_instance_name = "app-host"
+  enable_ec2_monitoring = var.enable_ec2_backend
+  ec2_instance_id       = var.enable_ec2_backend ? module.ec2_app_host[0].instance_id : ""
+  ec2_instance_name     = "app-host"
 
   # RDS monitoring
-  rds_instance_id   = var.enable_rds ? module.rds[0].rds_instance_id : ""
-  rds_instance_name = "${var.environment}-${var.project_name}-rds"
+  enable_rds_monitoring = var.enable_rds
+  rds_instance_id       = var.enable_rds ? module.rds[0].rds_instance_id : ""
+  rds_instance_name     = "${var.environment}-${var.project_name}-rds"
 
   # SNS notification email (optional)
   alarm_email = var.alarm_email

@@ -76,7 +76,7 @@
 # 5. Consider scaling up instance type if sustained
 #
 resource "aws_cloudwatch_metric_alarm" "ec2_cpu_high" {
-  count = var.enable_alarms && var.ec2_instance_id != "" ? 1 : 0
+  count = var.enable_alarms && var.enable_ec2_monitoring ? 1 : 0
 
   alarm_name          = "${var.environment}-${var.project_name}-ec2-cpu-high"
   comparison_operator = "GreaterThanThreshold"
@@ -151,7 +151,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_cpu_high" {
 #    - Consider rebooting instance
 #
 resource "aws_cloudwatch_metric_alarm" "ec2_status_check_failed" {
-  count = var.enable_alarms && var.ec2_instance_id != "" ? 1 : 0
+  count = var.enable_alarms && var.enable_ec2_monitoring ? 1 : 0
 
   alarm_name          = "${var.environment}-${var.project_name}-ec2-status-check-failed"
   comparison_operator = "GreaterThanThreshold"
