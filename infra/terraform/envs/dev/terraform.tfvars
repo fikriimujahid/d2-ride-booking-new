@@ -3,7 +3,7 @@
 # ================================================================================
 environment  = "dev"
 project_name = "d2-ride-booking"
-domain_name = "fikri.dev"
+domain_name  = "fikri.dev"
 
 # ================================================================================
 # AWS CONFIGURATION
