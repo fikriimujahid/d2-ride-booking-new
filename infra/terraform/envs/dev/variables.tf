@@ -322,3 +322,34 @@ variable "driver_root_volume_size" {
   description = "Driver web root EBS volume size in GB"
   default     = 16
 }
+
+# ================================================================================
+# CLOUDWATCH OBSERVABILITY SETTINGS (PHASE 7)
+# ================================================================================
+
+# --------------------------------------------------------------------------------
+# ENABLE CLOUDWATCH ALARMS TOGGLE
+# --------------------------------------------------------------------------------
+variable "enable_alarms" {
+  type        = bool
+  description = "Enable CloudWatch alarms. Set to false during demos, load tests, or when you need silence."
+  default     = false
+}
+
+# --------------------------------------------------------------------------------
+# LOG RETENTION PERIOD
+# --------------------------------------------------------------------------------
+variable "log_retention_days" {
+  type        = number
+  description = "CloudWatch log retention in days. DEV default: 7 days (cost control). PROD would use 30-90 days."
+  default     = 7
+}
+
+# --------------------------------------------------------------------------------
+# ALARM NOTIFICATION EMAIL
+# --------------------------------------------------------------------------------
+variable "alarm_email" {
+  type        = string
+  description = "Email address for CloudWatch alarm notifications. Leave empty to skip email subscription. Use team distribution list instead of personal email to avoid spam."
+  default     = ""
+}

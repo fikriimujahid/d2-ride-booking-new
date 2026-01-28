@@ -308,7 +308,7 @@ locals {
 
   backend_api_runtime_params_base = {
     NODE_ENV             = "dev"
-    PORT                 = "3000"  # backend-api runs on port 3000
+    PORT                 = "3000" # backend-api runs on port 3000
     AWS_REGION           = var.aws_region
     COGNITO_USER_POOL_ID = module.cognito.user_pool_id
     COGNITO_CLIENT_ID    = module.cognito.app_client_id
@@ -330,7 +330,7 @@ locals {
 
   web_driver_runtime_params = {
     NODE_ENV = "production"
-    PORT     = "3001"  # web-driver runs on port 3001 (consolidated instance)
+    PORT     = "3001" # web-driver runs on port 3001 (consolidated instance)
   }
 }
 
@@ -456,7 +456,7 @@ module "ec2_app_host" {
 
   # Unified host configuration
   service_name = "app-host"
-  
+
   # Pass both service names for multi-app setup
   enable_backend_api = var.enable_ec2_backend
   enable_web_driver  = var.enable_web_driver
@@ -487,13 +487,13 @@ module "alb" {
   public_subnet_ids     = module.vpc.public_subnet_ids
   alb_security_group_id = module.security_groups.alb_security_group_id
   target_instance_id    = module.ec2_app_host[0].instance_id
-  target_port           = 3000  # backend-api port
+  target_port           = 3000 # backend-api port
   health_check_path     = "/health"
-  
+
   # Domain configuration for api.d2.fikri.dev and driver.d2.fikri.dev
-  domain_name    = "d2.${var.domain_name}"  # Changed to d2.fikri.dev
+  domain_name    = "d2.${var.domain_name}" # Changed to d2.fikri.dev
   hosted_zone_id = var.route53_zone_id
-  
+
   # Use the regional certificate (ap-southeast-1) for ALB
   certificate_arn = aws_acm_certificate.alb.arn
   enable_https    = true
@@ -502,11 +502,11 @@ module "alb" {
 
   # When driver web is enabled, route driver.<domain> to the consolidated EC2 instance.
   driver_target_instance_id = var.enable_web_driver ? module.ec2_app_host[0].instance_id : ""
-  driver_target_port        = 3001  # web-driver port on consolidated instance
+  driver_target_port        = 3001 # web-driver port on consolidated instance
   driver_health_check_path  = "/health"
-  
+
   tags = var.tags
-  
+
   depends_on = [aws_acm_certificate_validation.alb]
 }
 
@@ -518,7 +518,7 @@ module "route53_api_driver" {
   source = "../../modules/route53"
 
   hosted_zone_id = var.route53_zone_id
-  domain_name    = "d2.${var.domain_name}"  # Changed to d2.fikri.dev
+  domain_name    = "d2.${var.domain_name}" # Changed to d2.fikri.dev
   aws_region     = var.aws_region
 
   # Admin/passenger are managed by the CloudFront static-site modules.
@@ -587,4 +587,74 @@ module "rds" {
   )
 
   tags = var.tags
+}
+# ================================================================================
+# CLOUDWATCH MODULE - OBSERVABILITY (PHASE 7)
+# ================================================================================
+# Centralized logging and cost-effective alarms for DEV environment
+#
+# WHAT THIS PROVIDES:
+# - CloudWatch log groups for backend-api and web-driver
+# - EC2 instance alarms (CPU, status checks)
+# - RDS database alarms (CPU, storage, connections)
+# - SNS topic for email notifications
+#
+# DEV PHILOSOPHY:
+# - Logs > Dashboards (engineers debug with logs, not graphs)
+# - Alarms answer "is it broken?" not "why is it broken?"
+# - Keep it simple and cheap
+#
+# COST IMPACT:
+# - Log storage (7 days): ~$0.20-0.50/month
+# - Alarms (5 total): FREE (first 10 alarms included)
+# - SNS notifications: FREE (within free tier)
+# - Total: < $1/month
+#
+# WHEN TO DISABLE ALARMS:
+# - During load testing (set enable_alarms = false)
+# - During demos where failures are expected
+# - When iterating rapidly on infrastructure
+#
+# HOW TO USE:
+# -----------
+# 1. Deploy with terraform apply
+# 2. Check email for SNS subscription confirmation (if alarm_email is set)
+# 3. View logs in CloudWatch console:
+#    - /dev/ridebooking/backend-api
+#    - /dev/ridebooking/web-driver
+# 4. View alarms in CloudWatch Alarms console
+# 5. Test alarms by triggering conditions (high CPU, etc.)
+#
+module "cloudwatch" {
+  # Only create if we have EC2 or RDS enabled
+  count = (var.enable_ec2_backend || var.enable_web_driver || var.enable_rds) ? 1 : 0
+
+  source = "../../modules/cloudwatch"
+
+  # General configuration
+  environment  = var.environment
+  project_name = var.project_name
+  tags         = var.tags
+
+  # Alarm toggle (disable during demos/testing)
+  enable_alarms = var.enable_alarms
+
+  # Log retention (7 days = cost-effective for DEV)
+  log_retention_days = var.log_retention_days
+
+  # EC2 monitoring (consolidated app-host instance)
+  ec2_instance_id   = var.enable_ec2_backend ? module.ec2_app_host[0].instance_id : ""
+  ec2_instance_name = "app-host"
+
+  # RDS monitoring
+  rds_instance_id   = var.enable_rds ? module.rds[0].rds_instance_id : ""
+  rds_instance_name = "${var.environment}-${var.project_name}-rds"
+
+  # SNS notification email (optional)
+  alarm_email = var.alarm_email
+
+  depends_on = [
+    module.ec2_app_host,
+    module.rds
+  ]
 }
