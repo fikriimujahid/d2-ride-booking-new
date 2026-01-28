@@ -333,7 +333,7 @@ variable "driver_root_volume_size" {
 variable "enable_alarms" {
   type        = bool
   description = "Enable CloudWatch alarms. Set to false during demos, load tests, or when you need silence."
-  default     = false
+  default     = true
 }
 
 # --------------------------------------------------------------------------------

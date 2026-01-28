@@ -47,25 +47,25 @@ output "sns_topic_name" {
 # --------------------------------------------------------------------------------
 output "ec2_cpu_alarm_name" {
   description = "EC2 CPU alarm name (empty if alarms disabled)"
-  value       = var.enable_alarms && var.ec2_instance_id != "" ? aws_cloudwatch_metric_alarm.ec2_cpu_high[0].alarm_name : ""
+  value       = var.enable_alarms && var.enable_ec2_monitoring ? aws_cloudwatch_metric_alarm.ec2_cpu_high[0].alarm_name : ""
 }
 
 output "ec2_status_check_alarm_name" {
   description = "EC2 status check alarm name (empty if alarms disabled)"
-  value       = var.enable_alarms && var.ec2_instance_id != "" ? aws_cloudwatch_metric_alarm.ec2_status_check_failed[0].alarm_name : ""
+  value       = var.enable_alarms && var.enable_ec2_monitoring ? aws_cloudwatch_metric_alarm.ec2_status_check_failed[0].alarm_name : ""
 }
 
 output "rds_cpu_alarm_name" {
   description = "RDS CPU alarm name (empty if alarms disabled)"
-  value       = var.enable_alarms && var.rds_instance_id != "" ? aws_cloudwatch_metric_alarm.rds_cpu_high[0].alarm_name : ""
+  value       = var.enable_alarms && var.enable_rds_monitoring ? aws_cloudwatch_metric_alarm.rds_cpu_high[0].alarm_name : ""
 }
 
 output "rds_storage_alarm_name" {
   description = "RDS storage alarm name (empty if alarms disabled)"
-  value       = var.enable_alarms && var.rds_instance_id != "" ? aws_cloudwatch_metric_alarm.rds_storage_low[0].alarm_name : ""
+  value       = var.enable_alarms && var.enable_rds_monitoring ? aws_cloudwatch_metric_alarm.rds_storage_low[0].alarm_name : ""
 }
 
 output "rds_connections_alarm_name" {
   description = "RDS connections alarm name (empty if alarms disabled)"
-  value       = var.enable_alarms && var.rds_instance_id != "" ? aws_cloudwatch_metric_alarm.rds_connections_high[0].alarm_name : ""
+  value       = var.enable_alarms && var.enable_rds_monitoring ? aws_cloudwatch_metric_alarm.rds_connections_high[0].alarm_name : ""
 }
