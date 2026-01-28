@@ -266,8 +266,18 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-*-admin-*"
+          # Legacy/static naming
+          "arn:aws:s3:::${var.project}-*-admin-*",
+
+          # Current DEV frontends (S3 website hosting)
+          "arn:aws:s3:::*-web-admin-*"
         ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -285,8 +295,104 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
 
         Resource = [
-          "arn:aws:s3:::${var.project}-*-admin-*/*"
+          # Legacy/static naming
+          "arn:aws:s3:::${var.project}-*-admin-*/*",
+
+          # Current DEV frontends (S3 website hosting)
+          "arn:aws:s3:::*-web-admin-*/*"
         ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7b: S3 Static Site Passenger - Buckets
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "S3StaticSitePassengerBuckets"
+        Effect = "Allow"
+
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::*-web-passenger-*"
+        ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7c: S3 Static Site Passenger - Objects
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "S3StaticSitePassengerObjects"
+        Effect = "Allow"
+
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::*-web-passenger-*/*"
+        ]
+
+        Condition = {
+          StringEquals = {
+            "s3:ResourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #7d: KMS for S3 Static Sites (SSE-KMS)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "KMSForS3StaticSitesDataKey"
+        Effect = "Allow"
+
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:Encrypt",
+          "kms:GenerateDataKey*",
+          "kms:ReEncrypt*"
+        ]
+
+        # Restrict to keys in *this* AWS account; further constrained by
+        # account ownership.
+        Resource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+      },
+
+      {
+        Sid    = "KMSForS3StaticSitesGrants"
+        Effect = "Allow"
+
+        Action = [
+          "kms:CreateGrant"
+        ]
+
+        Resource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+
+        Condition = {
+          StringEquals = {
+            "kms:CallerAccount"         = data.aws_caller_identity.current.account_id
+            "kms:GrantIsForAWSResource" = "true"
+          }
+        }
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,6 +458,57 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
       },
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #9b: CloudFront Cache Invalidation
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      {
+        Sid    = "CloudFrontCreateInvalidation"
+        Effect = "Allow"
+
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetDistribution",
+          "cloudfront:GetInvalidation",
+          "cloudfront:ListInvalidations"
+        ]
+
+        Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PERMISSION RULE #9c: SSM Parameter Store (Runtime Config)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # Deploy scripts run a local preflight on the GitHub runner using
+      # `aws ssm get-parameters-by-path --path /<env>/<project>/<service>`.
+      # Allow only the expected app config prefixes.
+      {
+        Sid    = "SSMParameterReadRuntimeConfig"
+        Effect = "Allow"
+
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath"
+        ]
+
+        Resource = [
+          # GetParametersByPath may evaluate authz against the base path ARN
+          # (no trailing /*), so allow both.
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/backend-api",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/backend-api/*",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/web-driver",
+          "arn:aws:ssm:*:*:parameter/*/${var.project}/web-driver/*",
+
+          # Runtime environments use project_name (e.g. "d2-ride-booking") which can
+          # differ from the bootstrap stack's var.project (e.g. repo name).
+          # Allow the runtime project prefix used by envs/dev.
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/backend-api",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/backend-api/*",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/web-driver",
+          "arn:aws:ssm:*:*:parameter/*/d2-ride-booking/web-driver/*"
+        ]
+      },
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # PERMISSION RULE #10: SSM Send Command to Tagged Instances
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       {
@@ -364,7 +521,6 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
           StringEquals = {
-            "aws:ResourceTag/Service"   = "backend-api"
             "aws:ResourceTag/ManagedBy" = "terraform"
           }
         }

@@ -1,11 +1,4 @@
-# ============================================================================
-# WEB DRIVER CI WORKFLOW - Quality & Security Checks
-# ============================================================================
-# Purpose: Validate driver portal code quality and security
-# This is a Next.js + React + TypeScript frontend application
-# ============================================================================
-
-name: ci-web-driver
+name: Web-Passenger CI (Dev)
 
 # ============================================================================
 # TRIGGER CONFIGURATION
@@ -14,36 +7,35 @@ on:
   pull_request:
     # Only run when PR targets 'dev' branch
     branches: [dev]
-    
-    # Path filter: only trigger when web-driver files change
-    # Why: in a monorepo, this prevents unnecessary CI runs
     paths:
-      - apps/web-driver/**
+      - apps/web-passengers/**
 
 # ============================================================================
 # SECURITY PERMISSIONS (Principle of Least Privilege)
 # ============================================================================
 permissions:
   # Read-only access to repository content
-  # Minimum permission needed for CI validation
+  # This is the minimum permission needed for CI checks
+  # No write access = more secure (can't modify code or secrets)
   contents: read
 
 # ============================================================================
 # JOB DEFINITION
 # ============================================================================
 jobs:
-  web-driver:
-    # Use Ubuntu runner (standard for Node.js projects)
+  checks:
+    # Use Ubuntu runner (standard, well-supported, cost-effective)
     runs-on: ubuntu-latest
     
-    # Fail-safe timeout (Next.js builds can be slower than Vite)
-    # 5 minutes is sufficient for small Next.js apps
+    # Fail-safe: terminate job after 5 minutes if it hangs
+    # Prevents: runaway costs, stuck pipelines blocking other PRs
     timeout-minutes: 5
     
-    # Set default working directory to avoid 'cd' in each step
+    # Set default working directory for all 'run' steps
+    # Eliminates need to 'cd apps/web-passenger' in every command
     defaults:
       run:
-        working-directory: apps/web-driver
+        working-directory: apps/web-passenger
 
     steps:
       # ======================================================================
@@ -52,8 +44,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Fetch full git history (not shallow clone)
-          # Required for: gitleaks to scan all commits in PR
+          # Fetch full git history (all commits and branches)
+          # Why: gitleaks needs commit history to scan for secrets
+          # fetch-depth: 0 = complete history (not shallow clone)
           fetch-depth: 0
 
       # ======================================================================
@@ -62,74 +55,69 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # Node.js 20 = current LTS version (stable, recommended)
+          # Node.js 20 = LTS (Long Term Support) version
+          # Why: stability, security updates, same version as production
           node-version: 20
           
-          # Enable npm caching to speed up workflow
-          # Reuses node_modules between runs if package-lock unchanged
+          # Enable npm dependency caching
+          # Cache hit = skip downloading packages (saves 30-60 seconds)
           cache: npm
           
-          # Path to lock file for cache key generation
-          cache-dependency-path: apps/web-driver/package-lock.json
+          # Path to package-lock.json for cache key generation
+          # If lock file changes = cache miss, re-download dependencies
+          cache-dependency-path: apps/web-passenger/package-lock.json
 
       # ======================================================================
       # STEP 3: INSTALL DEPENDENCIES (Clean Install)
       # ======================================================================
       - name: Install dependencies
-        # npm ci = Clean Install (removes node_modules, installs from lock)
-        # Why 'ci' instead of 'install':
-        # - Faster in CI/CD pipelines
-        # - Reproducible (exact versions from package-lock.json)
-        # - Fails if package.json and lock file don't match (catches errors)
+        # npm ci = Clean Install (production best practice)
         run: npm ci
 
       # ======================================================================
       # STEP 4: CODE QUALITY - TYPE CHECKING (TypeScript)
       # ======================================================================
       - name: TypeScript check
-        # Run TypeScript compiler to validate types
-        # Why: catches type errors before code reaches production
-        # Next.js apps: ensures pages/components are type-safe
+        # catches type errors that would cause runtime bugs
         run: npm run typecheck
 
       # ======================================================================
       # STEP 5: CODE QUALITY - LINTING (ESLint)
       # ======================================================================
       - name: ESLint
-        # Lint code for style issues and common mistakes
-        # Next.js ESLint includes: React hooks rules, Core Web Vitals
-        # Example catches: missing alt text, improper link usage
+        # Run ESLint to enforce code style and catch common mistakes
         run: npm run lint
 
       # ======================================================================
-      # STEP 6: BUILD VERIFICATION (Next.js)
+      # STEP 6: BUILD VERIFICATION (Next.js Production Build)
       # ======================================================================
       - name: Build
         env:
-          # Disable Next.js telemetry in CI (privacy, cleaner logs)
-          # Next.js collects anonymous usage data by default
+          # Disable Next.js anonymous telemetry collection
+          # Why: privacy in CI, cleaner logs, no external network calls
           NEXT_TELEMETRY_DISABLED: '1'
-        # Build production Next.js bundle
-        # Why: verifies all pages compile, no missing imports/exports
-        # Next.js performs: route validation, image optimization, bundling
+        # Build production-optimized Next.js bundle
+        # What this does:
+        # - Compiles TypeScript to JavaScript
+        # - Bundles and minifies code
+        # - Optimizes images
+        # - Generates static pages (if using SSG)
+        # Why: ensures app can build before deploying
         run: npm run build
 
       # ======================================================================
-      # STEP 7: SECURITY - DEPENDENCY VULNERABILITIES
+      # STEP 7: SECURITY - DEPENDENCY VULNERABILITIES (npm audit)
       # ======================================================================
       - name: Dependency scan (npm audit)
-        # Scan npm packages for known security vulnerabilities
-        # --production = only check production deps (not devDependencies)
-        # --audit-level=high = fail only on HIGH/CRITICAL severity
-        # Why: Next.js apps can have vulnerabilities in React, image libs, etc.
+        # Scan npm dependencies for known security vulnerabilities
         run: npm audit --production --audit-level=high
-
+      
       # ======================================================================
       # STEP 8: SECURITY - SECRET DETECTION (Gitleaks)
       # ======================================================================
       - name: Secret scan (gitleaks)
         # Scan git commits for accidentally committed secrets
-        # Common in frontend: API keys, Firebase config, Auth0 secrets
+        # Critical for passenger app: API keys, Firebase config, auth tokens
         uses: gitleaks/gitleaks-action@v2
         with:
           args: >-
@@ -143,39 +131,47 @@ jobs:
             --log-opts=--no-merges --first-parent
             ${{ github.event.pull_request.base.sha }}^..${{ github.event.pull_request.head.sha }}
             --
-            apps/web-driver
-        # Critical flags:
-        # --redact = mask secrets in logs (don't expose them)
-        # --exit-code=2 = fail workflow if secrets found (blocks PR merge)
-        # Scan only PR commits (base SHA to head SHA range)
+            apps/web-passenger
+        # Key flags explained:
+        # detect = scan mode (vs protect mode)
+        # --redact = hide secret values in output (don't leak in logs)
+        # --exit-code=2 = fail workflow if secrets found (blocks PR)
+        # base.sha^..head.sha = only scan commits in this PR (not entire repo)
+        # -- apps/web-passenger = limit scan to this directory
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+        
       # ======================================================================
       # STEP 9: SECURITY - STATIC ANALYSIS (Semgrep SAST)
       # ======================================================================
       - name: Setup Python (for Semgrep)
-        # Semgrep is written in Python, requires Python runtime
+        # Semgrep is a Python-based security scanner
         uses: actions/setup-python@v5
         with:
+          # Python 3.11 = modern, stable, fast
           python-version: '3.11'
 
       - name: Semgrep (SAST)
         # SAST = Static Application Security Testing
-        # Scans source code for security vulnerabilities without running it
+        # Analyzes source code for security vulnerabilities (without running it)
+        # Detects: XSS, injection flaws, insecure patterns
         run: |
+          # Upgrade pip to latest version (best practice)
           python -m pip install --upgrade pip
+          
+          # Install Semgrep security scanner
           pip install semgrep
+          
+          # Run Semgrep with multiple security rule sets
           semgrep \
           --config p/default \
           --config p/typescript \
           --config p/javascript \
           --error \
           --metrics=off
-        # Rule configurations:
-        # p/default = generic security rules (XSS, code injection)
-        # p/typescript = TypeScript-specific patterns
-        # p/javascript = JavaScript security issues (eval, dangerouslySetInnerHTML)
-        # --error = treat findings as errors (fail CI)
-        # --metrics=off = disable analytics (privacy)
-
+        # Rule sets explained:
+        # p/default = general security rules (OWASP Top 10 patterns)
+        # p/typescript = TypeScript-specific vulnerabilities
+        # p/javascript = JS security issues (eval, innerHTML, DOM XSS)
+        # --error = treat all findings as errors (fail CI if issues found)
+        # --metrics=off = disable usage analytics (privacy, GDPR compliance)

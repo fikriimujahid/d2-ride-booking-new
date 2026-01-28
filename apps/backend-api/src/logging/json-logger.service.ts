@@ -10,6 +10,10 @@ export class JsonLogger extends ConsoleLogger {
     super(context ?? 'backend-api');
   }
 
+  private nowIso() {
+    return new Date().toISOString();
+  }
+
   private normalizeError(error: unknown) {
     if (error instanceof Error) {
       return {
@@ -44,7 +48,7 @@ export class JsonLogger extends ConsoleLogger {
     const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
     const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
     super.log(
-      JSON.stringify({ level: 'info', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
+      JSON.stringify({ ts: this.nowIso(), level: 'info', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
     );
   }
 
@@ -54,7 +58,7 @@ export class JsonLogger extends ConsoleLogger {
     const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
     const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
     super.warn(
-      JSON.stringify({ level: 'warn', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
+      JSON.stringify({ ts: this.nowIso(), level: 'warn', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
     );
   }
 
@@ -67,12 +71,33 @@ export class JsonLogger extends ConsoleLogger {
 
     super.error(
       JSON.stringify({
+        ts: this.nowIso(),
         level: 'error',
         context,
         ...this.normalizeMessage(message),
         ...(stack ? { stack } : {}),
         ...(meta ?? {})
       })
+    );
+  }
+
+  debug(message: unknown, context?: string): void;
+  debug(message: unknown, meta?: Record<string, unknown>): void;
+  debug(message: unknown, metaOrContext?: string | Record<string, unknown>) {
+    const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
+    const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
+    super.debug(
+      JSON.stringify({ ts: this.nowIso(), level: 'debug', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
+    );
+  }
+
+  verbose(message: unknown, context?: string): void;
+  verbose(message: unknown, meta?: Record<string, unknown>): void;
+  verbose(message: unknown, metaOrContext?: string | Record<string, unknown>) {
+    const context = typeof metaOrContext === 'string' ? metaOrContext : this.context;
+    const meta = typeof metaOrContext === 'string' ? {} : metaOrContext;
+    super.verbose(
+      JSON.stringify({ ts: this.nowIso(), level: 'verbose', context, ...this.normalizeMessage(message), ...(meta ?? {}) })
     );
   }
 

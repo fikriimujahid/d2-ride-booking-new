@@ -87,3 +87,22 @@ output "driver_web_instance_profile_arn" {
   description = "ARN of the driver web instance profile"
   value       = aws_iam_instance_profile.driver_web.arn
 }
+
+# ========================================
+# CONSOLIDATED APP HOST OUTPUTS (DEV ONLY)
+# ========================================
+
+output "app_host_role_arn" {
+  description = "ARN of the consolidated app host IAM role (DEV only)"
+  value       = aws_iam_role.app_host.arn
+}
+
+output "app_host_instance_profile_name" {
+  description = "Name of the consolidated app host instance profile (DEV only)"
+  value       = aws_iam_instance_profile.app_host.name
+}
+
+output "app_host_instance_profile_arn" {
+  description = "ARN of the consolidated app host instance profile (DEV only)"
+  value       = aws_iam_instance_profile.app_host.arn
+}

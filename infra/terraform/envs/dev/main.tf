@@ -1,22 +1,4 @@
 # ================================================================================
-# DEVELOPMENT ENVIRONMENT - MAIN CONFIGURATION
-# ================================================================================
-#
-# PURPOSE:
-# This file defines the ENTIRE infrastructure for the DEV environment of our
-# ride-booking application. Think of this as the "master blueprint" that tells
-# Terraform exactly what AWS resources to create and how they should connect.
-#
-# WHAT GETS CREATED:
-# - VPC (Virtual Private Cloud): Your own isolated network in AWS
-# - Subnets: Subdivisions of the VPC (public for internet-facing, private for databases)
-# - Security Groups: Firewall rules controlling who can talk to what
-# - IAM Roles: Permission sets for your applications to access AWS services
-# - Cognito: User authentication system (login/signup for admin, drivers, passengers)
-# - RDS Database: MySQL database with secure IAM-based authentication
-# ================================================================================
-
-# ================================================================================
 # TERRAFORM CONFIGURATION BLOCK
 # ================================================================================
 terraform {
@@ -50,6 +32,12 @@ provider "aws" {
   region = var.aws_region
 }
 
+# CloudFront requires ACM certificates in us-east-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 # ================================================================================
 # DATA SOURCES - FETCHING INFORMATION FROM AWS
 # ================================================================================
@@ -59,6 +47,105 @@ data "aws_caller_identity" "current" {}
 # CURRENT AWS REGION
 # --------------------------------------------------------------------------------
 data "aws_region" "current" {}
+
+# ================================================================================
+# ACM CERTIFICATE FOR CLOUDFRONT (MUST BE IN us-east-1)
+# ================================================================================
+resource "aws_acm_certificate" "cloudfront" {
+  provider = aws.us_east_1
+
+  domain_name               = "*.d2.${var.domain_name}"
+  subject_alternative_names = ["d2.${var.domain_name}"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-cloudfront-cert"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Service     = "cloudfront"
+    Domain      = "d2.${var.domain_name}"
+  })
+}
+
+# DNS validation records for the CloudFront certificate
+resource "aws_route53_record" "cloudfront_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cloudfront.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.route53_zone_id
+}
+
+# Wait for certificate validation to complete
+resource "aws_acm_certificate_validation" "cloudfront" {
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.cloudfront.arn
+  validation_record_fqdns = [for record in aws_route53_record.cloudfront_cert_validation : record.fqdn]
+}
+
+# ================================================================================
+# ACM CERTIFICATE FOR ALB (MUST BE IN SAME REGION AS ALB: ap-southeast-1)
+# ================================================================================
+# ALB will host:
+# - api.d2.fikri.dev (backend API)
+# - driver.d2.fikri.dev (driver web app)
+resource "aws_acm_certificate" "alb" {
+  # Note: No provider alias - uses default provider (ap-southeast-1)
+  domain_name               = "*.d2.${var.domain_name}"
+  subject_alternative_names = ["d2.${var.domain_name}"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-alb-cert"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Service     = "alb"
+    Domain      = "d2.${var.domain_name}"
+  })
+}
+
+# DNS validation records for the ALB certificate
+# Note: Can reuse same validation records as CloudFront cert since both cover *.d2.fikri.dev
+resource "aws_route53_record" "alb_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.alb.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = var.route53_zone_id
+}
+
+# Wait for ALB certificate validation to complete
+resource "aws_acm_certificate_validation" "alb" {
+  certificate_arn         = aws_acm_certificate.alb.arn
+  validation_record_fqdns = [for record in aws_route53_record.alb_cert_validation : record.fqdn]
+}
 
 # ================================================================================
 # DEPLOYMENT ARTIFACTS BUCKET (S3)
@@ -74,6 +161,75 @@ module "deployments_bucket" {
   force_destroy = true
 
   tags = var.tags
+}
+
+# ================================================================================
+# COGNITO MODULE - USER AUTHENTICATION SYSTEM
+# ================================================================================
+module "cognito" {
+  source = "../../modules/cognito"
+
+  environment  = var.environment
+  project_name = var.project_name
+
+  # -----------------------------------------------------------------------------
+  # DOMAIN NAME (FOR COGNITO HOSTED UI)
+  # -----------------------------------------------------------------------------
+  domain_name             = var.domain_name
+  password_minimum_length = var.cognito_password_min_length
+
+  tags = var.tags
+}
+
+# ================================================================================
+# STATIC WEB SITES (CLOUDFRONT + PRIVATE S3, DEV)
+# ================================================================================
+module "web_admin_static" {
+  count  = var.enable_web_admin ? 1 : 0
+  source = "../../modules/cloudfront-static-site"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  environment    = var.environment
+  project_name   = var.project_name
+  aws_account_id = data.aws_caller_identity.current.account_id
+
+  site_name      = "web-admin"
+  domain_name    = "admin.d2.${var.domain_name}"
+  hosted_zone_id = var.route53_zone_id
+
+  acm_certificate_arn = aws_acm_certificate.cloudfront.arn
+  force_destroy       = true
+  tags                = var.tags
+
+  depends_on = [aws_acm_certificate_validation.cloudfront]
+}
+
+module "web_passenger_static" {
+  count  = var.enable_web_passenger ? 1 : 0
+  source = "../../modules/cloudfront-static-site"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  environment    = var.environment
+  project_name   = var.project_name
+  aws_account_id = data.aws_caller_identity.current.account_id
+
+  site_name      = "web-passenger"
+  domain_name    = "passenger.d2.${var.domain_name}"
+  hosted_zone_id = var.route53_zone_id
+
+  acm_certificate_arn = aws_acm_certificate.cloudfront.arn
+  force_destroy       = true
+  tags                = var.tags
+
+  depends_on = [aws_acm_certificate_validation.cloudfront]
 }
 
 # ================================================================================
@@ -139,25 +295,73 @@ module "iam" {
   aws_region                      = data.aws_region.current.name
   aws_account_id                  = data.aws_caller_identity.current.account_id
   deployment_artifacts_bucket_arn = module.deployments_bucket.bucket_arn
+  cognito_user_pool_arn           = module.cognito.user_pool_arn
   tags                            = var.tags
 }
 
 # ================================================================================
-# COGNITO MODULE - USER AUTHENTICATION SYSTEM
+# RUNTIME CONFIG (SSM PARAMETER STORE)
 # ================================================================================
-module "cognito" {
-  source = "../../modules/cognito"
+locals {
+  runtime_param_prefix_backend = "/${var.environment}/${var.project_name}/backend-api"
+  runtime_param_prefix_driver  = "/${var.environment}/${var.project_name}/web-driver"
 
-  environment  = var.environment
-  project_name = var.project_name
+  backend_api_runtime_params_base = {
+    NODE_ENV             = "dev"
+    PORT                 = "3000"  # backend-api runs on port 3000
+    AWS_REGION           = var.aws_region
+    COGNITO_USER_POOL_ID = module.cognito.user_pool_id
+    COGNITO_CLIENT_ID    = module.cognito.app_client_id
+    CORS_ORIGINS         = "https://admin.${var.domain_name},https://driver.${var.domain_name},https://passenger.${var.domain_name}"
+  }
 
-  # -----------------------------------------------------------------------------
-  # DOMAIN NAME (FOR COGNITO HOSTED UI)
-  # -----------------------------------------------------------------------------
-  domain_name             = var.domain_name
-  password_minimum_length = var.cognito_password_min_length
+  backend_api_runtime_params_db = var.enable_rds ? {
+    DB_HOST                    = module.rds[0].rds_address
+    DB_PORT                    = tostring(module.rds[0].rds_port)
+    DB_NAME                    = var.db_name
+    DB_USER                    = var.rds_db_user
+    DB_IAM_AUTH                = "true"
+    DB_SSL                     = "true"
+    DB_SSL_REJECT_UNAUTHORIZED = "true"
+    DB_SSL_CA_PATH             = "/opt/apps/backend-api/shared/aws-rds-global-bundle.pem"
+  } : {}
 
-  tags = var.tags
+  backend_api_runtime_params = merge(local.backend_api_runtime_params_base, local.backend_api_runtime_params_db)
+
+  web_driver_runtime_params = {
+    NODE_ENV = "production"
+    PORT     = "3001"  # web-driver runs on port 3001 (consolidated instance)
+  }
+}
+
+resource "aws_ssm_parameter" "backend_api_runtime" {
+  for_each = var.enable_ec2_backend ? local.backend_api_runtime_params : {}
+
+  name  = "${local.runtime_param_prefix_backend}/${each.key}"
+  type  = "String"
+  value = each.value
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-backend-api-${each.key}"
+    Environment = var.environment
+    Service     = "backend-api"
+    ManagedBy   = "terraform"
+  })
+}
+
+resource "aws_ssm_parameter" "web_driver_runtime" {
+  for_each = var.enable_web_driver ? local.web_driver_runtime_params : {}
+
+  name  = "${local.runtime_param_prefix_driver}/${each.key}"
+  type  = "String"
+  value = each.value
+
+  tags = merge(var.tags, {
+    Name        = "${var.environment}-${var.project_name}-web-driver-${each.key}"
+    Environment = var.environment
+    Service     = "web-driver"
+    ManagedBy   = "terraform"
+  })
 }
 
 # ================================================================================
@@ -229,6 +433,113 @@ module "bastion" {
 }
 
 # ================================================================================
+# CONSOLIDATED EC2 INSTANCE (DEV ONLY)
+# ================================================================================
+# DEV-ONLY CONSOLIDATION:
+# - Both backend-api and web-driver run on ONE EC2 instance
+# - Isolation via: separate directories, PM2 processes, ports, log streams
+# - backend-api: port 3000, /opt/apps/backend-api
+# - web-driver:  port 3001, /opt/apps/web-driver
+# ================================================================================
+module "ec2_app_host" {
+  count = var.enable_ec2_backend || var.enable_web_driver ? 1 : 0
+
+  source = "../../modules/ec2"
+
+  environment           = var.environment
+  project_name          = var.project_name
+  subnet_id             = module.vpc.private_subnet_id
+  security_group_id     = module.security_groups.app_host_security_group_id
+  instance_profile_name = module.iam.app_host_instance_profile_name
+  instance_type         = var.backend_instance_type
+  root_volume_size      = var.backend_root_volume_size
+
+  # Unified host configuration
+  service_name = "app-host"
+  
+  # Pass both service names for multi-app setup
+  enable_backend_api = var.enable_ec2_backend
+  enable_web_driver  = var.enable_web_driver
+
+  tags = merge(var.tags, {
+    # Tag with both services for SSM targeting
+    # SSM can target by either Service=backend-api or Service=web-driver
+    Service         = "app-host"
+    ServiceBackend  = "backend-api"
+    ServiceDriver   = "web-driver"
+    DeploymentModel = "consolidated"
+  })
+
+  depends_on = [module.vpc]
+}
+
+# ================================================================================
+# ALB MODULE - Application Load Balancer for API and Driver Web
+# ================================================================================
+module "alb" {
+  count = var.enable_alb && var.enable_ec2_backend ? 1 : 0
+
+  source = "../../modules/alb"
+
+  environment           = var.environment
+  project_name          = var.project_name
+  vpc_id                = module.vpc.vpc_id
+  public_subnet_ids     = module.vpc.public_subnet_ids
+  alb_security_group_id = module.security_groups.alb_security_group_id
+  target_instance_id    = module.ec2_app_host[0].instance_id
+  target_port           = 3000  # backend-api port
+  health_check_path     = "/health"
+  
+  # Domain configuration for api.d2.fikri.dev and driver.d2.fikri.dev
+  domain_name    = "d2.${var.domain_name}"  # Changed to d2.fikri.dev
+  hosted_zone_id = var.route53_zone_id
+  
+  # Use the regional certificate (ap-southeast-1) for ALB
+  certificate_arn = aws_acm_certificate.alb.arn
+  enable_https    = true
+
+  enable_driver_web = var.enable_web_driver
+
+  # When driver web is enabled, route driver.<domain> to the consolidated EC2 instance.
+  driver_target_instance_id = var.enable_web_driver ? module.ec2_app_host[0].instance_id : ""
+  driver_target_port        = 3001  # web-driver port on consolidated instance
+  driver_health_check_path  = "/health"
+  
+  tags = var.tags
+  
+  depends_on = [aws_acm_certificate_validation.alb]
+}
+
+# ================================================================================
+# ROUTE53 RECORDS (DEV)
+# ================================================================================
+module "route53_api_driver" {
+  count  = var.route53_zone_id != "" ? 1 : 0
+  source = "../../modules/route53"
+
+  hosted_zone_id = var.route53_zone_id
+  domain_name    = "d2.${var.domain_name}"  # Changed to d2.fikri.dev
+  aws_region     = var.aws_region
+
+  # Admin/passenger are managed by the CloudFront static-site modules.
+  enable_admin_record     = false
+  enable_passenger_record = false
+
+  # Keep these empty to avoid accidental usage.
+  s3_website_zone_id       = ""
+  admin_website_domain     = ""
+  passenger_website_domain = ""
+
+  # API and Driver domains point to the ALB
+  enable_api_record    = var.enable_alb && var.enable_ec2_backend
+  enable_driver_record = var.enable_web_driver && var.enable_alb && var.enable_ec2_backend
+  alb_dns_name         = try(module.alb[0].alb_dns_name, "")
+  alb_zone_id          = try(module.alb[0].alb_zone_id, "")
+
+  tags = var.tags
+}
+
+# ================================================================================
 # RDS MODULE - MYSQL DATABASE WITH IAM AUTHENTICATION
 # ================================================================================
 module "rds" {
@@ -276,45 +587,4 @@ module "rds" {
   )
 
   tags = var.tags
-}
-
-# ================================================================================
-# EC2 MODULE - BACKEND API SERVER (DEV, SINGLE AZ)
-# ================================================================================
-module "ec2_backend" {
-  count = var.enable_ec2_backend ? 1 : 0
-
-  source = "../../modules/ec2"
-
-  environment           = var.environment
-  project_name          = var.project_name
-  subnet_id             = module.vpc.private_subnet_id
-  security_group_id     = module.security_groups.backend_api_security_group_id
-  instance_profile_name = module.iam.backend_api_instance_profile_name
-  instance_type         = var.backend_instance_type
-  root_volume_size      = var.backend_root_volume_size
-  tags                  = var.tags
-
-  depends_on = [module.vpc]
-}
-
-# ================================================================================
-# OPTIONAL ALB MODULE - ENABLED VIA TOGGLE (DEFAULT OFF TO SAVE COST)
-# ================================================================================
-module "alb" {
-  count = var.enable_alb && var.enable_ec2_backend ? 1 : 0
-
-  source = "../../modules/alb"
-
-  environment           = var.environment
-  project_name          = var.project_name
-  vpc_id                = module.vpc.vpc_id
-  public_subnet_ids     = module.vpc.public_subnet_ids
-  alb_security_group_id = module.security_groups.alb_security_group_id
-  target_instance_id    = module.ec2_backend[0].instance_id
-  target_port           = 3000
-  health_check_path     = "/health"
-  domain_name           = var.domain_name
-  hosted_zone_id        = var.route53_zone_id
-  tags                  = var.tags
 }

@@ -1,0 +1,142 @@
+# This is the display name shown in the GitHub Actions UI
+# Makes it easy to identify this workflow among many others
+# Convention: Include app name (web-admin), action (Deploy), and environment (Dev)
+name: Web-Admin Deploy (Dev)
+# ============================================================================
+# TRIGGER CONFIGURATION
+# ============================================================================
+# The "on" keyword defines WHEN this workflow runs
+on:
+  # WHY push? Because we want automatic deployments after merging PRs
+  push:
+    # Only trigger on the "dev" branch
+    branches: [dev]
+    # Only trigger if files in apps/web-admin/ changed
+    # WHY? Saves CI/CD minutes and avoids unnecessary deployments
+    paths:
+      - apps/web-admin/**
+
+# ============================================================================
+# SECURITY PERMISSIONS (Principle of Least Privilege)
+# ============================================================================
+# By default, GitHub Actions has READ/WRITE access to everything - DANGEROUS!
+# This section RESTRICTS what this workflow can do - critical security practice
+permissions:
+  # "read" access to repository content (to checkout code)
+  # WHY read-only? We never need to write back to the repo during deployment
+  contents: read
+  # "write" access to id-token for OIDC (OpenID Connect) authentication with AWS
+  # WHY? Needed to assume an AWS IAM role without storing long-lived AWS keys
+  id-token: write
+
+# ============================================================================
+# JOB DEFINITION
+# ============================================================================
+# "jobs" is where the actual work happens - think of it as a to-do list
+# Each job runs on a fresh virtual machine (isolated, clean environment)
+jobs:
+  # "deploy" is the job ID (used internally by GitHub Actions)
+  # You could have multiple jobs here (e.g., "test", "build", "deploy")
+  # WHY just one job? For simple deployments, one job is cleaner
+  deploy:
+    # Human-readable name shown in GitHub UI
+    name: Deploy web-admin to S3 (Dev)
+    # The virtual machine OS to run on
+    # "ubuntu-latest" = most recent Ubuntu version GitHub provides
+    # WHY Ubuntu? Most common, well-supported, has all tools we need (Node, AWS CLI)
+    runs-on: ubuntu-latest
+    # Maximum time this job can run before being killed
+    # WHY? Prevents runaway jobs that cost money or indicate something is broken
+    timeout-minutes: 5
+    # Links this job to GitHub Environment named "dev"
+    environment: dev
+    # Sets default configuration for all "run" steps in this job
+    defaults:
+      # Every shell command will run from this directory
+      # WHY? We're building web-admin, so we need to be in its folder
+      run:
+        working-directory: apps/web-admin
+
+    # "steps" is the sequence of actions this job performs
+    steps:
+      # STEP 1: Get the code
+      # Uses a pre-built action from GitHub's marketplace
+      # "actions/checkout@v4" = official GitHub action, version 4
+      # WHY? The runner starts empty - we need to download our repo code first
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # STEP 2: Install Node.js
+      # web-admin is a React/Vite app that needs Node.js to build
+      - name: Setup Node.js
+        # Pre-built action that installs Node.js on the runner
+        uses: actions/setup-node@v4
+        # Configuration options for this action
+        with:
+          # Which version of Node.js to install
+          # "20" = Node.js version 20 (LTS - Long Term Support)
+          # WHY v20? Modern, stable, matches your dev environment
+          node-version: 20
+          # Enable caching of npm packages between workflow runs
+          # WHY? Speeds up builds by reusing previously downloaded packages
+          # Saves time and GitHub Actions minutes (cost savings)
+          cache: npm
+          # Where to find package-lock.json for cache key generation
+          cache-dependency-path: apps/web-admin/package-lock.json
+
+      # STEP 3: Download all dependencies
+      - name: Install dependencies
+        # "run" means execute a shell command (not a pre-built action)
+        # "npm ci" = Clean Install - installs exact versions from package-lock.json
+        # WHY "ci" not "install"? 
+        #   - "ci" is faster (deletes node_modules first, no version resolution)
+        #   - "ci" is deterministic (uses exact lockfile versions)
+        #   - "ci" fails if package.json and package-lock.json are out of sync
+        # Best practice for CI/CD - ensures reproducible builds
+        run: npm ci
+
+      # STEP 4: Build the frontend application
+      - name: Build
+        # "env" sets environment variables for THIS STEP ONLY
+        # Vite reads these during build and embeds them in the JavaScript bundle
+        # WHY environment variables? Different environments need different API URLs, Cognito IDs
+        # SECURITY: These are PUBLIC (embedded in frontend code) - never put secrets here
+        env:
+          VITE_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run build
+
+      # STEP 5: Authenticate with AWS
+      # This is MODERN authentication using OIDC (no long-lived access keys)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # STEP 6: Upload built files to AWS S3
+      - name: Deploy to S3
+        run: |
+          # AWS CLI command to sync local files to S3 bucket
+          # "aws s3 sync" = smart upload/download that only transfers changed files
+          # WHY sync not cp? 
+          #   - sync is faster (skips unchanged files)
+          #   - sync can delete old files with --delete flag
+          # "dist" = source directory (where Vite put the built files)
+          # "s3://${{ vars.S3_BUCKET_WEB_ADMIN }}" = destination S3 bucket
+          # "--delete" = remove files in S3 that don't exist locally
+          # WHY --delete? Ensures old files are removed (prevents stale content)
+          aws s3 sync dist s3://${{ vars.S3_BUCKET_WEB_ADMIN }} --delete
+
+      # STEP 7: Clear CloudFront CDN cache (optional but recommended)
+      - name: Invalidate CloudFront cache
+        # "if" = conditional execution (only run if condition is true)
+        # "${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN != '' }}" checks if variable is not empty
+        # WHY conditional? Not all environments use CloudFront (dev might use S3 directly)
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN }} \
+            --paths "/*"
+

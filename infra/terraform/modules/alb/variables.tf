@@ -46,6 +46,12 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "enable_https" {
+  description = "Whether to enable HTTPS listener. Must be a plan-time boolean (do not derive from resource attributes)."
+  type        = bool
+  default     = true
+}
+
 variable "alb_security_group_id" {
   description = "Security group for the ALB"
   type        = string
@@ -54,6 +60,30 @@ variable "alb_security_group_id" {
 variable "target_instance_id" {
   description = "Backend EC2 instance ID to register"
   type        = string
+}
+
+variable "driver_target_instance_id" {
+  description = "Optional: driver-web EC2 instance ID to register (enables host-based routing for driver.<domain_name>)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_driver_web" {
+  description = "Whether to enable driver-web resources on the ALB (target group, listener rule, and attachment). Must be a plan-time boolean (do not derive from resource attributes)."
+  type        = bool
+  default     = false
+}
+
+variable "driver_target_port" {
+  description = "Driver-web listener port"
+  type        = number
+  default     = 3000
+}
+
+variable "driver_health_check_path" {
+  description = "Health check path for driver web"
+  type        = string
+  default     = "/health"
 }
 
 variable "target_port" {

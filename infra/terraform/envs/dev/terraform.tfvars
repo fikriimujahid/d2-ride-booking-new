@@ -3,6 +3,7 @@
 # ================================================================================
 environment  = "dev"
 project_name = "d2-ride-booking"
+domain_name = "fikri.dev"
 
 # ================================================================================
 # AWS CONFIGURATION
@@ -22,17 +23,15 @@ public_subnet_cidr_secondary = "10.20.2.0/24"
 private_subnet_cidr           = "10.20.11.0/24"
 private_subnet_cidr_secondary = "10.20.12.0/24"
 
-# ================================================================================
-# COGNITO CONFIGURATION (PHASE 3)
-# ================================================================================
-# User authentication settings
-
-domain_name = "d2.fikri.dev"
-
 # --------------------------------------------------------------------------------
 # ROUTE53 HOSTED ZONE ID (LEAVE BLANK TO SKIP ALIAS CREATION)
 # --------------------------------------------------------------------------------
 route53_zone_id = "Z019716819YT0PPFWXQPV"
+
+# Optional: S3 website hosted zone id for your region.
+# If unknown, leave blank and the Route53 module will fall back to CNAME records
+# for admin/passenger subdomains (still valid DNS).
+s3_website_zone_id = ""
 
 # --------------------------------------------------------------------------------
 # PASSWORD MINIMUM LENGTH
@@ -84,6 +83,13 @@ enable_nat_gateway       = true
 enable_alb               = true
 enable_ssm_vpc_endpoints = true
 
+enable_web_admin     = true
+enable_web_passenger = true
+enable_web_driver    = true
+
+driver_instance_type    = "t3.micro"
+driver_root_volume_size = 16
+
 # ================================================================================
 # BASTION (OPTIONAL)
 # ================================================================================
@@ -92,7 +98,7 @@ enable_bastion = true
 
 # Optional SSH (generally not needed if using SSM)
 bastion_enable_ssh        = true
-bastion_ssh_allowed_cidrs = ["36.80.104.154/32", "103.136.58.0/24"] # Replace with your IP address
+bastion_ssh_allowed_cidrs = ["125.163.30.66/32", "103.136.58.0/24"] # Replace with your IP address
 
 # Only required if bastion_enable_ssh=true
 bastion_key_name = "fikri-platform-key"

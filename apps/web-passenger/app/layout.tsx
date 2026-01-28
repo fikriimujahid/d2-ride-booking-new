@@ -1,3 +1,5 @@
+import { Providers } from './providers';
+
 export default function RootLayout({
   children
 }: {
@@ -5,7 +7,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: 'system-ui, sans-serif' }}>{children}</body>
+      <body style={{ fontFamily: 'system-ui, sans-serif' }}>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

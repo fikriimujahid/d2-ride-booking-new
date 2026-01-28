@@ -117,6 +117,27 @@ variable "enable_ec2_backend" {
   default     = false
 }
 
+# ================================================================================
+# FRONTENDS (PHASE 6) - COST-AWARE TOGGLES
+# ================================================================================
+variable "enable_web_admin" {
+  type        = bool
+  description = "Enable web-admin static site bucket (S3 website hosting)"
+  default     = true
+}
+
+variable "enable_web_passenger" {
+  type        = bool
+  description = "Enable web-passenger static site bucket (S3 website hosting)"
+  default     = true
+}
+
+variable "enable_web_driver" {
+  type        = bool
+  description = "Enable web-driver Next.js app on EC2 (SSR/realtime ready)"
+  default     = true
+}
+
 variable "enable_ssm_vpc_endpoints" {
   type        = bool
   description = "Enable Interface VPC endpoints for SSM (ssm/ec2messages/ssmmessages) so private instances can use Session Manager without NAT"
@@ -172,6 +193,12 @@ variable "domain_name" {
 variable "route53_zone_id" {
   type        = string
   description = "Hosted zone ID for Route53 (blank to skip alias creation)"
+  default     = ""
+}
+
+variable "s3_website_zone_id" {
+  type        = string
+  description = "Optional: S3 website hosted zone id for this region (enables Route53 A-alias to S3 website endpoints). If blank, we fall back to CNAME for admin/passenger (valid for subdomains)."
   default     = ""
 }
 
@@ -278,5 +305,20 @@ variable "backend_instance_type" {
 variable "backend_root_volume_size" {
   type        = number
   description = "Root EBS volume size in GB"
+  default     = 16
+}
+
+# ================================================================================
+# DRIVER WEB EC2 SETTINGS (PHASE 6)
+# ================================================================================
+variable "driver_instance_type" {
+  type        = string
+  description = "Driver web EC2 instance type (keep micro for DEV cost)"
+  default     = "t3.micro"
+}
+
+variable "driver_root_volume_size" {
+  type        = number
+  description = "Driver web root EBS volume size in GB"
   default     = 16
 }

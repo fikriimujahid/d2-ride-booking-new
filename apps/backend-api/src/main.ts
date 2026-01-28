@@ -16,8 +16,26 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { JsonLogger } from './logging/json-logger.service';
+import { createHttpLoggingMiddleware } from './logging/http-logging.middleware';
+import { AllExceptionsFilter } from './logging/all-exceptions.filter';
 
 async function bootstrap() {
+  // Dev-only workaround for environments that intercept HTTPS with a custom/self-signed CA.
+  // Prefer setting NODE_EXTRA_CA_CERTS to your corporate root CA instead.
+  const allowSelfSignedRaw = (process.env.ALLOW_SELF_SIGNED_CERTS ?? '').toLowerCase();
+  const allowSelfSigned = allowSelfSignedRaw === 'true' || allowSelfSignedRaw === '1' || allowSelfSignedRaw === 'yes';
+  const nodeEnv = process.env.NODE_ENV ?? 'dev';
+  if (allowSelfSigned && nodeEnv !== 'production') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        msg: 'ALLOW_SELF_SIGNED_CERTS enabled: TLS certificate verification is disabled (dev only)',
+        hint: 'Prefer using NODE_EXTRA_CA_CERTS with your corporate CA when possible.'
+      })
+    );
+  }
+
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
     logger: new JsonLogger('bootstrap')
@@ -38,6 +56,94 @@ async function bootstrap() {
 
   const port = Number(config.get<number>('PORT') ?? 3000);
   const env = config.get<string>('NODE_ENV') ?? 'dev';
+
+  // Dev-friendly log levels.
+  // In production, keep noise down; in dev, enable verbose debugging.
+  logger.setLogLevels(env === 'production' ? ['log', 'warn', 'error'] : ['log', 'warn', 'error', 'debug', 'verbose']);
+
+  // Request/response logs (no headers/body; safe for dev + prod).
+  app.use(createHttpLoggingMiddleware(logger));
+
+  // Ensure 5xx errors always include stack traces in logs.
+  app.useGlobalFilters(new AllExceptionsFilter(logger));
+
+  // CORS
+  // - Local dev: allow Vite dev server(s) to call the API with Bearer tokens.
+  // - Prod: enable only when explicitly configured (or when same-origin is used).
+  const corsOriginsRaw = config.get<string>('CORS_ORIGINS');
+  const corsOrigins = (corsOriginsRaw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const devDefaultOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+    'https://fikri.dev',
+    'https://admin.d2.fikri.dev',
+    'https://driver.d2.fikri.dev',
+    'https://api.d2.fikri.dev',
+    'https://passenger.d2.fikri.dev'
+  ];
+
+  const prodDefaultOrigins = [
+    'https://admin.d2.fikri.dev',
+    'https://driver.d2.fikri.dev',
+    'https://api.d2.fikri.dev',
+    'https://passenger.d2.fikri.dev'
+  ];
+
+  // In production, we still need explicit CORS for the public web apps hosted on
+  // different subdomains (e.g., admin -> api). For dev ergonomics, configured
+  // CORS_ORIGINS is treated as additive (merged with defaults).
+  const defaultOrigins = env === 'production' ? prodDefaultOrigins : devDefaultOrigins;
+  // Best practice for dev ergonomics: treat configured origins as additive.
+  // This avoids accidentally blocking same-origin tools (e.g., Swagger at api.*)
+  // when CORS_ORIGINS is set by Terraform.
+  const allowList = Array.from(
+    new Set([...(defaultOrigins ?? []), ...(corsOrigins.length > 0 ? corsOrigins : [])])
+  );
+
+  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, '');
+  const allowSet = new Set(allowList.map(normalizeOrigin));
+
+  if (allowList.length > 0) {
+
+    app.enableCors({
+      origin: (
+        origin: string | undefined,
+        callback: (err: Error | null, allow?: boolean) => void
+      ) => {
+        // Allow non-browser clients (curl/Postman) which have no Origin header.
+        if (!origin) return callback(null, true);
+        const normalized = normalizeOrigin(origin);
+        if (allowSet.has(normalized)) return callback(null, true);
+        logger.warn('CORS blocked origin', {
+          origin,
+          normalized,
+          allowListCount: allowList.length,
+          allowListSample: allowList.slice(0, 10)
+        });
+        return callback(new Error(`CORS blocked origin: ${origin}`), false);
+      },
+      // If frontends ever use cookies, this must be true.
+      // Safe with an allowlist (never use credentials with '*').
+      credentials: true,
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // Leave allowedHeaders undefined so the CORS middleware echoes
+      // the browser's Access-Control-Request-Headers on preflight.
+      optionsSuccessStatus: 204,
+      maxAge: 86400
+    });
+
+    logger.log('CORS enabled', { allowList });
+  }
 
   // Swagger API documentation (enabled in dev, disable in production)
   if (env !== 'production') {
@@ -98,6 +204,14 @@ async function bootstrap() {
   }
 
   logger.log('backend bootstrapping', { port, env });
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandledRejection', { reason: reason instanceof Error ? reason.stack ?? reason.message : String(reason) });
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('uncaughtException', { error: error.stack ?? error.message });
+  });
 
   process.on('SIGTERM', () => logger.log('received SIGTERM, shutting down gracefully'));
   process.on('SIGINT', () => logger.log('received SIGINT, shutting down gracefully'));

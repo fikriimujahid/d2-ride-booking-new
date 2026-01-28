@@ -1,0 +1,6 @@
+# Ensure shell scripts keep LF endings (required on Linux runners)
+*.sh text eol=lf
+
+# Workflows are interpreted on Linux runners too
+*.yml text eol=lf
+*.yaml text eol=lf

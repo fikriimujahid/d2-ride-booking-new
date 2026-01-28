@@ -36,7 +36,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const iamAuthRaw = (this.config.get<string>('DB_IAM_AUTH') ?? '').trim().toLowerCase();
     const iamAuthForced = iamAuthRaw === 'true' || iamAuthRaw === '1' || iamAuthRaw === 'yes';
 
-    const sslConfig = this.buildSslConfig();
+    const sslConfig = this.buildSslConfig(host);
 
     // Local dev: use password-based auth if DB_PASSWORD is set
     // Production: use IAM auth (no password)
@@ -94,14 +94,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private buildSslConfig(): { rejectUnauthorized: boolean; ca?: string } | undefined {
+  private buildSslConfig(dbHost?: string): { rejectUnauthorized: boolean; ca?: string } | undefined {
     // Default: enable TLS with strict verification.
     // If you see "self-signed certificate in certificate chain", either:
     // - provide the correct CA bundle via DB_SSL_CA_PATH / DB_SSL_CA_B64, or
     // - (dev only) set DB_SSL_REJECT_UNAUTHORIZED=false to bypass verification.
 
     const sslEnabledRaw = this.config.get<string>('DB_SSL');
-    const sslEnabled = sslEnabledRaw ? sslEnabledRaw.toLowerCase() !== 'false' : true;
+    const isLocalHost = dbHost === 'localhost' || dbHost === '127.0.0.1' || dbHost === '::1';
+    // Local dev ergonomics: if connecting to a local DB and DB_SSL isn't set,
+    // default to no TLS. Local MySQL often uses a self-signed cert and strict
+    // verification will fail unless a CA is provided.
+    const sslEnabled = sslEnabledRaw
+      ? sslEnabledRaw.toLowerCase() !== 'false'
+      : !isLocalHost;
     if (!sslEnabled) {
       return undefined;
     }

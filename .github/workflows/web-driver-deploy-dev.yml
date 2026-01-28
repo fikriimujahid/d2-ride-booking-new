@@ -1,0 +1,118 @@
+name: Web-Driver Deploy (Dev)
+
+# ============================================================================
+# TRIGGER CONFIGURATION
+# ============================================================================
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/web-driver/**
+
+# ============================================================================
+# SECURITY PERMISSIONS (Principle of Least Privilege)
+# ============================================================================
+permissions:
+  contents: read
+  id-token: write
+
+# ============================================================================
+# JOB DEFINITION
+# ============================================================================
+jobs:
+  deploy:
+    name: Deploy web-driver to EC2 (Dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev
+
+    concurrency:
+      group: web-driver-dev
+      cancel-in-progress: true
+
+    defaults:
+      run:
+        working-directory: apps/web-driver
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-driver/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate public env (Cognito)
+        env:
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run validate:env
+
+      - name: Build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          # Next.js embeds NEXT_PUBLIC_* variables at build time.
+          # We intentionally do NOT hardcode API/Cognito settings in the repo.
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run build
+
+      - name: Prune devDependencies (artifact only)
+        run: npm prune --omit=dev
+
+      - name: Package deployment artifact
+        id: artifact
+        run: |
+          set -e
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "release_id=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+          mkdir -p ../../artifact-web-driver
+          rm -rf ../../artifact-web-driver/*
+
+          cp -r .next ../../artifact-web-driver/
+          if [ -d public ]; then cp -r public ../../artifact-web-driver/; fi
+          cp ecosystem.config.js ../../artifact-web-driver/
+          cp package*.json ../../artifact-web-driver/
+
+          # Ship production node_modules to keep deploy deterministic in private subnets
+          # (no reliance on outbound NPM access / NAT).
+          cp -r node_modules ../../artifact-web-driver/
+
+          tar -czf ../../web-driver-$TIMESTAMP.tar.gz -C ../../artifact-web-driver .
+          # Write the checksum with a stable filename (no path) so verification works after download.
+          (cd ../.. && sha256sum "web-driver-$TIMESTAMP.tar.gz" > "web-driver-$TIMESTAMP.sha256")
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Upload artifact to S3
+        run: |
+          aws s3 cp ../../web-driver-${{ steps.artifact.outputs.release_id }}.tar.gz \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-${{ steps.artifact.outputs.release_id }}.tar.gz
+
+          aws s3 cp ../../web-driver-${{ steps.artifact.outputs.release_id }}.sha256 \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-${{ steps.artifact.outputs.release_id }}.sha256
+
+      - name: Deploy to EC2 using SSM (no SSH)
+        run: |
+          export AWS_REGION="${{ vars.AWS_REGION }}"
+          export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
+          export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+          export ENVIRONMENT="dev"
+          # Must match Terraform's infra/terraform/envs/dev/terraform.tfvars (project_name)
+          # because deploy scripts read runtime config from SSM under /<env>/<project>/<service>.
+          export PROJECT_NAME="d2-ride-booking"
+
+          bash ../../infra/scripts/deploy-web-driver.sh
+
