@@ -143,9 +143,9 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_backend_api" {
   security_group_id = aws_security_group.alb.id
-  description       = "Allow HTTP to backend API targets"
-  # The destination security group that is allowed to receive traffic
-  referenced_security_group_id = aws_security_group.backend_api.id
+  description       = "Allow HTTP to backend API targets (port 3000 on consolidated app-host)"
+  # DEV consolidation: backend-api runs on same instance as driver web, uses app_host SG
+  referenced_security_group_id = aws_security_group.app_host.id
   from_port                    = 3000
   to_port                      = 3000
   ip_protocol                  = "tcp"
@@ -177,11 +177,11 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_backend_api" {
 resource "aws_vpc_security_group_egress_rule" "alb_to_driver_web" {
   security_group_id = aws_security_group.alb.id
 
-  description = "Allow HTTP to driver web targets"
-  # The destination security group that is allowed to receive traffic
-  referenced_security_group_id = aws_security_group.driver_web.id
-  from_port                    = 3000
-  to_port                      = 3000
+  description = "Allow HTTP to driver web targets (port 3001 on consolidated app-host)"
+  # DEV consolidation: driver web runs on same instance as backend-api, uses app_host SG
+  referenced_security_group_id = aws_security_group.app_host.id
+  from_port                    = 3001
+  to_port                      = 3001
   ip_protocol                  = "tcp"
 
   tags = merge(
