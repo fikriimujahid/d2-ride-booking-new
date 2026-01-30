@@ -32,5 +32,8 @@ Thumbs.db
 **/.terraform.lock.hcl
 **/*.tfstate
 **/*.tfstate.*
+**/plan.tfplan
+**/plan.json
+**/plan.txt
 **/crash.log
 **/crash.*.log
