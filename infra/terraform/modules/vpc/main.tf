@@ -25,8 +25,8 @@ locals {
 # inputs are required), use resource preconditions instead.
 resource "terraform_data" "input_validation" {
   input = {
-    enable_multi_az             = var.enable_multi_az
-    az_count                    = var.az_count
+    enable_multi_az               = var.enable_multi_az
+    az_count                      = var.az_count
     public_subnet_cidr_secondary  = var.public_subnet_cidr_secondary
     private_subnet_cidr_secondary = var.private_subnet_cidr_secondary
     availability_zone_secondary   = var.availability_zone_secondary
