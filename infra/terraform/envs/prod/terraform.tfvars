@@ -7,7 +7,7 @@ aws_region   = "ap-southeast-1"
 # ==============================================================================
 enable_github_actions_deploy_role = true
 github_oidc_provider_arn          = "arn:aws:iam::731099197523:oidc-provider/token.actions.githubusercontent.com"
-github_repo = "fikriimujahid/d2-ride-booking-new"
+github_repo                       = "fikriimujahid/d2-ride-booking-new"
 
 # Root domain. ALB will use: api.d2.<domain_name> and driver.d2.<domain_name>
 domain_name     = "fikri.dev"
@@ -39,10 +39,10 @@ private_db_subnet_cidrs = [
 enable_ssm_vpc_endpoints = false
 
 # Bastion (SSM-first; no inbound ports by default)
-enable_bastion          = false
-bastion_instance_type   = "t3.micro"
-bastion_enable_ssh      = false
-bastion_key_name        = null
+enable_bastion            = false
+bastion_instance_type     = "t3.micro"
+bastion_enable_ssh        = false
+bastion_key_name          = null
 bastion_ssh_allowed_cidrs = []
 
 # RDS
@@ -54,14 +54,14 @@ rds_instance_class        = "db.t3.micro"
 rds_allocated_storage     = 30
 rds_engine_version        = "8.0"
 rds_backup_retention_days = 7
- 
+
 # ASGs
 asg_health_check_type_override = "EC2"
-backend_instance_type    = "t3.micro"
-backend_root_volume_size = 10
-backend_asg_min          = 1
-backend_asg_desired      = 1
-backend_asg_max          = 3
+backend_instance_type          = "t3.micro"
+backend_root_volume_size       = 10
+backend_asg_min                = 1
+backend_asg_desired            = 1
+backend_asg_max                = 3
 
 driver_instance_type    = "t3.micro"
 driver_root_volume_size = 10

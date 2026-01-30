@@ -12,8 +12,8 @@ locals {
   env         = lookup(var.tags, "Environment", "env")
 
   # DB subnets are optional (PROD uses them; DEV typically does not).
-  enable_private_db_tier = length(var.private_db_subnet_cidrs) > 0
-  private_db_cidr        = try(var.private_db_subnet_cidrs[0], null)
+  enable_private_db_tier    = length(var.private_db_subnet_cidrs) > 0
+  private_db_cidr           = try(var.private_db_subnet_cidrs[0], null)
   private_db_cidr_secondary = try(var.private_db_subnet_cidrs[1], null)
 }
 
