@@ -384,6 +384,8 @@ module "security_groups" {
   # Security group egress rules still need to allow it.
   enable_nat_gateway = var.enable_nat_gateway
 
+  vpc_endpoints_security_group_id = try(module.ssm_vpc_endpoints[0].security_group_id, null)
+
   tags = var.tags
 }
 

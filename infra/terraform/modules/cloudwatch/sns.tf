@@ -42,7 +42,7 @@
 resource "aws_sns_topic" "alarms" {
   name              = "${var.environment}-${var.project_name}-alarms"
   display_name      = "${upper(var.environment)} ${var.project_name} Alarms"
-  kms_master_key_id = "alias/aws/sns" # Use default AWS-managed encryption
+  kms_master_key_id = aws_kms_key.sns.arn
 
   tags = merge(var.tags, {
     Name        = "${var.environment}-${var.project_name}-alarms"

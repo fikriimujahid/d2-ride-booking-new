@@ -107,21 +107,23 @@ resource "aws_vpc_security_group_ingress_rule" "driver_from_alb" {
 
 # Egress: allow HTTPS outbound (SSM, npm, OS updates). Keep narrow: 443 only.
 resource "aws_vpc_security_group_egress_rule" "backend_https_out" {
-  security_group_id = aws_security_group.backend_api.id
-  description       = "HTTPS outbound for patching/SSM"
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
+  security_group_id            = aws_security_group.backend_api.id
+  description                  = "HTTPS outbound for patching/SSM"
+  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? var.vpc_cidr : null
+  referenced_security_group_id = var.vpc_endpoints_security_group_id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
 }
 
 resource "aws_vpc_security_group_egress_rule" "driver_https_out" {
-  security_group_id = aws_security_group.driver_web.id
-  description       = "HTTPS outbound for patching/SSM"
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
+  security_group_id            = aws_security_group.driver_web.id
+  description                  = "HTTPS outbound for patching/SSM"
+  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? var.vpc_cidr : null
+  referenced_security_group_id = var.vpc_endpoints_security_group_id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
 }
 
 # Egress: allow MySQL within VPC (RDS). Avoid SG-to-SG here to prevent dependency cycles with the RDS module.
