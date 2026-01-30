@@ -29,11 +29,11 @@ module "vpc" {
 	availability_zone_secondary = local.prod_secondary_az
 
 	# New, backward-compatible controls
-	enable_multi_az = true
+	enable_multi_az = false
 	az_count        = 2
 
 	# NAT enabled only in PROD
-	enable_nat_gateway = true
+	enable_nat_gateway = false
 
 	tags = merge(var.tags, {
 		Project     = var.project_name

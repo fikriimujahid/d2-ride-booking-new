@@ -5,8 +5,8 @@ aws_region   = "ap-southeast-1"
 # ==============================================================================
 # GITHUB INTEGRATION
 # ==============================================================================
-enable_github_actions_deploy_role = false
-github_oidc_provider_arn          = ""
+enable_github_actions_deploy_role = true
+github_oidc_provider_arn          = "arn:aws:iam::731099197523:oidc-provider/token.actions.githubusercontent.com"
 github_repo = "fikriimujahid/d2-ride-booking-new"
 
 # Root domain. ALB will use: api.d2.<domain_name> and driver.d2.<domain_name>
@@ -36,17 +36,17 @@ private_db_subnet_cidrs = [
   "10.30.22.0/24"
 ]
 
-enable_ssm_vpc_endpoints = true
+enable_ssm_vpc_endpoints = false
 
 # Bastion (SSM-first; no inbound ports by default)
-enable_bastion          = true
+enable_bastion          = false
 bastion_instance_type   = "t3.micro"
 bastion_enable_ssh      = false
 bastion_key_name        = null
 bastion_ssh_allowed_cidrs = []
 
 # RDS
-enable_rds                = true
+enable_rds                = false
 db_name                   = "ridebooking"
 db_master_username        = "admin"
 rds_db_user               = "app_user"
@@ -73,7 +73,7 @@ driver_asg_max          = 3
 cognito_password_min_length = 12
 
 # Observability
-enable_alarms      = true
+enable_alarms      = false
 alarm_email        = ""
 log_retention_days = 90
 
