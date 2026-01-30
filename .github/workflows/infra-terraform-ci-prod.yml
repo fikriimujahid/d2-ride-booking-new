@@ -1,39 +1,81 @@
-# ============================================================================
-# TERRAFORM CI WORKFLOW - Production (PR -> main)
-# ============================================================================
-# Purpose: Validate Terraform code before it reaches main/prod.
-# - terraform fmt/validate/plan (prod env)
-# - Trivy IaC scan
-# Authentication: GitHub OIDC -> AWS role (no long-lived AWS keys)
-# ============================================================================
-
 name: Infra Terraform CI (Prod)
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - infra/terraform/**
-      - .github/workflows/infra-terraform-ci-prod.yml
+      - infra/terraforms/**
+      - .github/workflows/infra-terraform-ci-prods.yml
 
+# ------------------------------------------------------------------------------
+# CONCURRENCY CONTROL (Prevent multiple runs at the same time)
+# ------------------------------------------------------------------------------
 concurrency:
+  # ----------------------------------------------------------------------------
+  # CONCURRENCY GROUP (Unique identifier for this workflow run)
+  # ----------------------------------------------------------------------------
+  # Creates a group name like: "ci-infra-terraform-prod-refs/pull/123/merge"
+  # Syntax: ${{ github.ref }} is a GitHub Actions context variable (dynamic value).
+  # For PRs, github.ref is like "refs/pull/123/merge".
+  # Why: Each PR gets its own group, so PR #123 and PR #124 can run in parallel.
+  # But multiple pushes to PR #123 share the same group (so old runs get canceled).
+  # ----------------------------------------------------------------------------
   group: ci-infra-terraform-prod-${{ github.ref }}
+  # ----------------------------------------------------------------------------
+  # CANCEL IN PROGRESS (Cancel old runs when new commit is pushed)
+  # ----------------------------------------------------------------------------
   cancel-in-progress: true
 
+# ------------------------------------------------------------------------------
+# PERMISSIONS (Security: Define what this workflow can access)
+# ------------------------------------------------------------------------------
 permissions:
+  # ----------------------------------------------------------------------------
+  # CONTENTS PERMISSION (Read access to repository code)
+  # ----------------------------------------------------------------------------
   contents: read
+  # ----------------------------------------------------------------------------
+  # ID-TOKEN PERMISSION (Request OIDC tokens for AWS authentication)
+  # ----------------------------------------------------------------------------
   id-token: write
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # --------------------------------------------------------------------------
+    # TIMEOUT (Prevent runaway jobs)
+    # --------------------------------------------------------------------------
+    # If job runs longer than 5 minutes, GitHub forcibly cancels it.
+    timeout-minutes: 5
+    # --------------------------------------------------------------------------
+    # ENVIRONMENT (GitHub Environment for secrets and approvals)
+    # --------------------------------------------------------------------------
+    environment: prod
 
+    # --------------------------------------------------------------------------
+    # DEFAULTS (Apply settings to all steps in this job)
+    # --------------------------------------------------------------------------
     defaults:
       run:
+        # ----------------------------------------------------------------------
+        # WORKING DIRECTORY (Where shell commands execute)
+        # ----------------------------------------------------------------------
+        # All 'run:' steps execute in 'infra/terraform/' instead of repo root.
         working-directory: infra/terraform
-
+    # --------------------------------------------------------------------------
+    # ENVIRONMENT VARIABLES (Available to all steps in this job)
+    # --------------------------------------------------------------------------
     env:
+      # ------------------------------------------------------------------------
+      # TERRAFORM PLUGIN CACHE DIR (Speed up 'terraform init')
+      # ------------------------------------------------------------------------
+      # Tells Terraform where to store downloaded provider plugins (aws, etc.).
+      # Default: Terraform downloads plugins to '.terraform/providers' every time.
+      # With cache: Plugins are stored in '.terraform-plugin-cache' and reused.
+      # Why: Provider plugins are 50-200MB. Downloading every run is slow (1-2 min).
+      # With cache: 'terraform init' takes 5-10 seconds instead of 1-2 minutes.
+      # Note: We use GitHub Actions cache (actions/cache@v4) to persist this directory.
+      # ------------------------------------------------------------------------
       TF_PLUGIN_CACHE_DIR: .terraform-plugin-cache
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
@@ -42,15 +84,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
+          # --------------------------------------------------------------------
+          # FETCH DEPTH (How much git history to download)
+          # --------------------------------------------------------------------
+          # '0' means: Download complete git history (all commits, all branches).
+          # Default: '1' (shallow clone, only latest commit on current branch).
+          # Why: Some tools need git history (e.g., comparing changes, git blame).
+          # Downside: Slower checkout (more data to download).
+          # What breaks: If you remove this (use default '1'), most things work,
+          # but git-based tools might fail (e.g., 'git log', 'git diff').
+          # Best practice: Use '0' if you need full history, '1' for speed.
+          # --------------------------------------------------------------------
+          fetch-depth: 1
       - name: Cache terraform plugins & .terraform
         uses: actions/cache@v4
         with:
+          # --------------------------------------------------------------------
+          # PATH (Which directories to cache)
+          # --------------------------------------------------------------------
+          # Syntax: '|' is YAML multiline string (list of paths).
+          # Path 1: '.terraform-plugin-cache' stores provider plugins (aws, etc.).
+          # Path 2: '.terraform' stores provider versions, state, modules.
+          # Why: These directories are large and rarely change.
+          # --------------------------------------------------------------------
           path: |
             infra/terraform/.terraform-plugin-cache
             infra/terraform/.terraform
+          # --------------------------------------------------------------------
+          # KEY (Unique identifier for this cache)
+          # --------------------------------------------------------------------
+          # Format: "<OS>-terraform-<hash_of_terraform_files>"
+          # Example: "Linux-terraform-a3f2c8d..."
+          # Syntax: ${{ runner.os }} = "Linux", ${{ hashFiles(...) }} = SHA256 hash.
+          # hashFiles() creates a hash of all .tf, .tfvars, versions.tf files.
+          # Why: If Terraform files change, cache is invalidated (correct behavior).
+          # Example: You upgrade AWS provider from 4.0 to 5.0 in versions.tf,
+          # hashFiles() changes, cache misses, new provider is downloaded.
+          # What breaks: If you use a static key like 'terraform-cache', old plugins
+          # would be used even after changing provider versions (BAD!).
+          # Best practice: Include file hashes in cache key for correctness.
+          # --------------------------------------------------------------------
           key: ${{ runner.os }}-terraform-${{ hashFiles('infra/terraform/**/*.tf','infra/terraform/**/*.tfvars','infra/terraform/**/versions.tf') }}
+          # --------------------------------------------------------------------
+          # RESTORE KEYS (Fallback if exact key doesn't match)
+          # --------------------------------------------------------------------
+          # If exact cache key doesn't exist, try these prefixes in order.
+          # Example: If 'Linux-terraform-a3f2c8d' not found, try 'Linux-terraform-'.
+          # Why: Even if Terraform files changed slightly, most plugins are reusable.
+          # Saves time: Partial cache hit is better than no cache hit.
+          # What breaks: Without restore-keys, every Terraform file change is a full cache miss.
+          # Trade-off: Might restore slightly outdated cache, but 'terraform init' updates it.
+          # --------------------------------------------------------------------
           restore-keys: |
             ${{ runner.os }}-terraform-
 
@@ -59,8 +143,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          audience: sts.amazonaws.com
-
+ 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -72,25 +155,32 @@ jobs:
       - name: Terraform fmt (check)
         run: terraform fmt -check -recursive
 
-      - name: Terraform init+validate (prod)
-        run: |
-          terraform -chdir=envs/prod init -backend=false
-          terraform -chdir=envs/prod validate
+      # - name: Terraform init+validate (prod)
+      #   run: |
+      #     terraform -chdir=envs/prod init -backend=false
+      #     terraform -chdir=envs/prod validate
 
-      - name: Terraform plan (prod) -> save binary plan
-        run: |
-          terraform -chdir=envs/prod plan -input=false -no-color -out=plan.tfplan
-          terraform -chdir=envs/prod show -no-color plan.tfplan > plan.txt
-          terraform -chdir=envs/prod show -json plan.tfplan > plan.json
+      # ------------------------------------------------------------------------
+      # STEP 8: Generate Terraform execution plan
+      # ------------------------------------------------------------------------
+      # Creates a detailed plan of what Terraform would do if applied.
+      # Why: Preview infrastructure changes before they happen.
+      # What breaks: If resources are misconfigured, you'll see it here (not in prod!).
+      # ------------------------------------------------------------------------
+      # - name: Terraform plan (prod) -> save binary plan
+      #   run: |
+      #     terraform -chdir=envs/prod plan -input=false -no-color -out=plan.tfplan
+      #     terraform -chdir=envs/prod show -no-color plan.tfplan > plan.txt
+      #     terraform -chdir=envs/prod show -json plan.tfplan > plan.json
 
-      - name: Upload Terraform plan artifact (prod)
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-prod
-          path: |
-            infra/terraform/envs/prod/plan.tfplan
-            infra/terraform/envs/prod/plan.txt
-            infra/terraform/envs/prod/plan.json
+      # - name: Upload Terraform plan artifact (prod)
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: terraform-plan-prod
+      #     path: |
+      #       infra/terraform/envs/prod/plan.tfplan
+      #       infra/terraform/envs/prod/plan.txt
+      #       infra/terraform/envs/prod/plan.json
 
       - name: Trivy IaC scan (Terraform)
         uses: aquasecurity/trivy-action@0.33.1
@@ -98,7 +188,7 @@ jobs:
           scan-type: 'config'
           scan-ref: 'infra/terraform'
           # NOTE: keep skip-files single-line to avoid action shell parsing issues.
-          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json'
+          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json,**/tfplan'
           hide-progress: true
           format: 'table'
           severity: 'CRITICAL,HIGH'

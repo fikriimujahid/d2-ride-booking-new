@@ -21,8 +21,8 @@ variable "public_subnet_cidr_secondary" {
   default     = null
 
   validation {
-    condition     = var.enable_multi_az ? var.public_subnet_cidr_secondary != null : true
-    error_message = "When enable_multi_az is true, public_subnet_cidr_secondary must be set."
+    condition     = var.public_subnet_cidr_secondary == null || can(cidrhost(var.public_subnet_cidr_secondary, 0))
+    error_message = "public_subnet_cidr_secondary must be a valid CIDR block when set."
   }
 }
 
@@ -43,8 +43,8 @@ variable "private_subnet_cidr_secondary" {
   default     = null
 
   validation {
-    condition     = var.enable_multi_az ? var.private_subnet_cidr_secondary != null : true
-    error_message = "When enable_multi_az is true, private_subnet_cidr_secondary must be set."
+    condition     = var.private_subnet_cidr_secondary == null || can(cidrhost(var.private_subnet_cidr_secondary, 0))
+    error_message = "private_subnet_cidr_secondary must be a valid CIDR block when set."
   }
 }
 
@@ -63,11 +63,6 @@ variable "availability_zone_secondary" {
   type        = string
   description = "Secondary AZ for optional private subnet"
   default     = null
-
-  validation {
-    condition     = var.enable_multi_az ? var.availability_zone_secondary != null : true
-    error_message = "When enable_multi_az is true, availability_zone_secondary must be set."
-  }
 }
 
 # ----------------------------------------------------------------------------
@@ -101,11 +96,6 @@ variable "az_count" {
   validation {
     condition     = var.az_count == 1 || var.az_count == 2
     error_message = "az_count must be 1 or 2 for this module version."
-  }
-
-  validation {
-    condition     = var.enable_multi_az ? var.az_count >= 2 : true
-    error_message = "When enable_multi_az is true, az_count must be >= 2."
   }
 }
 

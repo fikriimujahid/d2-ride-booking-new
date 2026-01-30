@@ -35,3 +35,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "vpc_endpoints_security_group_id" {
+  description = "Security group ID attached to interface VPC endpoints (e.g., SSM endpoints). When set, outbound HTTPS can be restricted to this SG instead of 0.0.0.0/0."
+  type        = string
+  default     = null
+}

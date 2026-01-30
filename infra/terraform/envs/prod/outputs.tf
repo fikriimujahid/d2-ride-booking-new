@@ -19,7 +19,7 @@ output "prod_summary" {
         cloudfront_domain = try(module.web_admin_static_site.cloudfront_domain_name, null)
       }
       web_passenger = {
-        url              = "https://passenger.d2.${var.domain_name}"
+        url               = "https://passenger.d2.${var.domain_name}"
         bucket_name       = try(module.web_passenger_static_site.bucket_name, null)
         distribution_id   = try(module.web_passenger_static_site.cloudfront_distribution_id, null)
         cloudfront_domain = try(module.web_passenger_static_site.cloudfront_domain_name, null)
@@ -42,11 +42,11 @@ output "prod_summary" {
     } : null
 
     bastion = var.enable_bastion ? {
-      instance_id        = module.bastion[0].instance_id
-      public_ip          = module.bastion[0].public_ip
-      private_ip         = module.bastion[0].private_ip
-      security_group_id  = module.bastion[0].security_group_id
-      instance_profile   = module.bastion[0].instance_profile_name
+      instance_id       = module.bastion[0].instance_id
+      public_ip         = module.bastion[0].public_ip
+      private_ip        = module.bastion[0].private_ip
+      security_group_id = module.bastion[0].security_group_id
+      instance_profile  = module.bastion[0].instance_profile_name
     } : null
 
     asg = {
