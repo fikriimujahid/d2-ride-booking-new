@@ -1,0 +1,430 @@
+digraph prod_architecture {
+  // Graph settings
+  rankdir=TB;
+  compound=true;
+  newrank=true;
+  splines=ortho;
+  nodesep=0.8;
+  ranksep=1.2;
+  
+  node [shape=box, style=rounded, fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9];
+
+  // ============================================================================
+  // EXTERNAL LAYER - USERS & DNS
+  // ============================================================================
+  subgraph cluster_external {
+    label="External Users & DNS";
+    style=dashed;
+    color=blue;
+    fontsize=12;
+    
+    users [label="End Users\n(Admin, Driver,\nPassenger)", shape=person, style=filled, fillcolor=lightblue];
+    route53 [label="Route 53\nHosted Zone\nd2.fikri.dev\n(REQUIRED in PROD)", shape=cylinder, style=filled, fillcolor=orange];
+  }
+
+  // ============================================================================
+  // CI/CD LAYER - GITHUB ACTIONS
+  // ============================================================================
+  subgraph cluster_cicd {
+    label="CI/CD Pipeline";
+    style=filled;
+    fillcolor=lightgoldenrodyellow;
+    fontsize=12;
+    
+    github_actions [label="GitHub Actions\nPROD Environment\nOIDC Federation", shape=component, style=filled, fillcolor=gold];
+    cicd_role [label="IAM Role\ngithub-actions-deploy-prod\n(Least Privilege)\nDeny Session Manager", shape=folder, style=filled, fillcolor=coral];
+  }
+
+  // ============================================================================
+  // AWS REGION (ap-southeast-1)
+  // ============================================================================
+  subgraph cluster_region {
+    label="AWS Region: ap-southeast-1 (PRODUCTION)";
+    style=filled;
+    fillcolor=whitesmoke;
+    fontsize=14;
+
+    // ==========================================================================
+    // ACM CERTIFICATE (REGIONAL)
+    // ==========================================================================
+    acm_alb [label="ACM Certificate\n*.d2.fikri.dev\n(ALB)\nDNS Validation", shape=note, style=filled, fillcolor=gold];
+
+    // ==========================================================================
+    // S3 DEPLOYMENT BUCKET
+    // ==========================================================================
+    s3_deployments [label="S3 Bucket\nDeployment Artifacts\n(force_destroy=false)\nPROD Protection", shape=cylinder, style=filled, fillcolor=green];
+
+    // ==========================================================================
+    // COGNITO
+    // ==========================================================================
+    cognito [label="Cognito User Pool\n(PROD - Separate)\nRBAC: admin,\ndriver, passenger", shape=component, style=filled, fillcolor=plum];
+
+    // ==========================================================================
+    // VPC (MULTI-AZ PRODUCTION)
+    // ==========================================================================
+    subgraph cluster_vpc {
+      label="VPC (10.0.0.0/16) - Multi-AZ Production";
+      style=filled;
+      fillcolor=lightgray;
+      fontsize=12;
+
+      // ========================================================================
+      // INTERNET GATEWAY
+      // ========================================================================
+      igw [label="Internet Gateway", shape=diamond, style=filled, fillcolor=skyblue];
+
+      // ========================================================================
+      // PUBLIC SUBNETS (MULTI-AZ)
+      // ========================================================================
+      subgraph cluster_public {
+        label="Public Subnets (Multi-AZ)";
+        style=filled;
+        fillcolor=lightblue;
+        fontsize=11;
+        
+        subgraph cluster_public_a {
+          label="Public Subnet A\nap-southeast-1a\n10.0.1.0/24";
+          style=filled;
+          fillcolor=aliceblue;
+          fontsize=10;
+          
+          nat_gw_a [label="NAT Gateway A\n(High Availability)\nEIP attached", shape=diamond, style=filled, fillcolor=skyblue];
+          alb_node_a [label="ALB Node A", shape=component, style=filled, fillcolor=orange];
+        }
+        
+        subgraph cluster_public_b {
+          label="Public Subnet B\nap-southeast-1b\n10.0.2.0/24";
+          style=filled;
+          fillcolor=aliceblue;
+          fontsize=10;
+          
+          nat_gw_b [label="NAT Gateway B\n(High Availability)\nEIP attached", shape=diamond, style=filled, fillcolor=skyblue];
+          alb_node_b [label="ALB Node B", shape=component, style=filled, fillcolor=orange];
+        }
+        
+        subgraph cluster_public_c {
+          label="Public Subnet C\nap-southeast-1c\n10.0.3.0/24";
+          style=filled;
+          fillcolor=aliceblue;
+          fontsize=10;
+          
+          nat_gw_c [label="NAT Gateway C\n(High Availability)\nEIP attached", shape=diamond, style=filled, fillcolor=skyblue];
+          alb_node_c [label="ALB Node C", shape=component, style=filled, fillcolor=orange];
+        }
+      }
+
+      // ========================================================================
+      // APPLICATION LOAD BALANCER (LOGICAL)
+      // ========================================================================
+      alb [label="Application Load Balancer\nHTTPS (443) / HTTP (80→443)\nMulti-AZ\nHost-based Routing", shape=component, style=filled, fillcolor=darkorange];
+
+      // ========================================================================
+      // PRIVATE APP SUBNETS (MULTI-AZ)
+      // ========================================================================
+      subgraph cluster_private_app {
+        label="Private App Subnets (Multi-AZ)";
+        style=filled;
+        fillcolor=mistyrose;
+        fontsize=11;
+        
+        // BACKEND API AUTO SCALING GROUP
+        subgraph cluster_backend_asg {
+          label="Backend API Auto Scaling Group";
+          style=filled;
+          fillcolor=lightyellow;
+          fontsize=10;
+          
+          subgraph cluster_backend_a {
+            label="AZ-A\n10.0.11.0/24";
+            style=dashed;
+            fontsize=9;
+            
+            backend_a1 [label="backend-api\nInstance 1\nPort 3000\nt3.medium", shape=box3d, style=filled, fillcolor=yellow];
+            backend_a2 [label="backend-api\nInstance 2\nPort 3000\nt3.medium", shape=box3d, style=filled, fillcolor=yellow];
+          }
+          
+          subgraph cluster_backend_b {
+            label="AZ-B\n10.0.12.0/24";
+            style=dashed;
+            fontsize=9;
+            
+            backend_b1 [label="backend-api\nInstance 3\nPort 3000\nt3.medium", shape=box3d, style=filled, fillcolor=yellow];
+          }
+          
+          subgraph cluster_backend_c {
+            label="AZ-C\n10.0.13.0/24";
+            style=dashed;
+            fontsize=9;
+            
+            backend_c1 [label="backend-api\nInstance 4\nPort 3000\nt3.medium", shape=box3d, style=filled, fillcolor=yellow];
+          }
+        }
+        
+        // WEB DRIVER AUTO SCALING GROUP
+        subgraph cluster_driver_asg {
+          label="Web Driver Auto Scaling Group";
+          style=filled;
+          fillcolor=lightcyan;
+          fontsize=10;
+          
+          subgraph cluster_driver_a {
+            label="AZ-A\n10.0.11.0/24";
+            style=dashed;
+            fontsize=9;
+            
+            driver_a1 [label="web-driver\nInstance 1\nPort 3001\nt3.small", shape=box3d, style=filled, fillcolor=cyan];
+            driver_a2 [label="web-driver\nInstance 2\nPort 3001\nt3.small", shape=box3d, style=filled, fillcolor=cyan];
+          }
+          
+          subgraph cluster_driver_b {
+            label="AZ-B\n10.0.12.0/24";
+            style=dashed;
+            fontsize=9;
+            
+            driver_b1 [label="web-driver\nInstance 3\nPort 3001\nt3.small", shape=box3d, style=filled, fillcolor=cyan];
+          }
+        }
+      }
+
+      // ========================================================================
+      // PRIVATE DB SUBNETS (MULTI-AZ)
+      // ========================================================================
+      subgraph cluster_private_db {
+        label="Private DB Subnets (Multi-AZ)";
+        style=filled;
+        fillcolor=lavenderblush;
+        fontsize=11;
+        
+        subgraph cluster_db_a {
+          label="DB Subnet A\nap-southeast-1a\n10.0.21.0/24";
+          style=filled;
+          fillcolor=mistyrose;
+          fontsize=10;
+          
+          rds_primary [label="RDS MySQL\nPrimary Instance\ndb.t3.small\nIAM Auth Enabled\nMulti-AZ: YES\nBackup: 7 days\nDeletion Protection", shape=cylinder, style=filled, fillcolor=pink];
+        }
+        
+        subgraph cluster_db_b {
+          label="DB Subnet B\nap-southeast-1b\n10.0.22.0/24";
+          style=filled;
+          fillcolor=mistyrose;
+          fontsize=10;
+          
+          rds_standby [label="RDS MySQL\nStandby Instance\n(Synchronous\nReplication)", shape=cylinder, style=filled, fillcolor=pink];
+        }
+      }
+
+      // ========================================================================
+      // VPC ENDPOINTS (OPTIONAL BUT RECOMMENDED)
+      // ========================================================================
+      subgraph cluster_vpc_endpoints {
+        label="VPC Endpoints (PrivateLink) - Optional";
+        style=filled;
+        fillcolor=lightsteelblue;
+        fontsize=10;
+        
+        vpce_ssm [label="SSM Endpoint\n(Defense-in-depth)", shape=component, style=filled, fillcolor=steelblue];
+        vpce_ssmmessages [label="SSM Messages\nEndpoint", shape=component, style=filled, fillcolor=steelblue];
+        vpce_ec2messages [label="EC2 Messages\nEndpoint", shape=component, style=filled, fillcolor=steelblue];
+      }
+
+      // ========================================================================
+      // SECURITY GROUPS (LOGICAL)
+      // ========================================================================
+      subgraph cluster_security_groups {
+        label="Security Groups (PROD Module)";
+        style=dashed;
+        color=red;
+        fontsize=10;
+        
+        sg_alb [label="SG: ALB\nIngress: 80, 443\nfrom 0.0.0.0/0", shape=note, style=filled, fillcolor=mistyrose];
+        sg_backend [label="SG: Backend API\nIngress: 3000\nfrom ALB SG only", shape=note, style=filled, fillcolor=mistyrose];
+        sg_driver [label="SG: Web Driver\nIngress: 3001\nfrom ALB SG only", shape=note, style=filled, fillcolor=mistyrose];
+        sg_rds [label="SG: RDS\nIngress: 3306\nfrom Backend SG only", shape=note, style=filled, fillcolor=mistyrose];
+        sg_vpce [label="SG: VPC Endpoints\nIngress: 443\nfrom VPC CIDR", shape=note, style=filled, fillcolor=mistyrose];
+      }
+    }
+
+    // ==========================================================================
+    // IAM ROLES & POLICIES (PROD)
+    // ==========================================================================
+    subgraph cluster_iam {
+      label="IAM (Production - Separate Roles)";
+      style=filled;
+      fillcolor=lightcoral;
+      fontsize=11;
+      
+      iam_role_backend [label="IAM Role:\nBackend API\nInstance Profile", shape=folder, style=filled, fillcolor=coral];
+      iam_role_driver [label="IAM Role:\nWeb Driver\nInstance Profile", shape=folder, style=filled, fillcolor=coral];
+      iam_policy_rds [label="IAM Policy:\nRDS IAM Auth", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_ssm [label="IAM Policy:\nSSM Parameters\n& Session Manager", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_s3 [label="IAM Policy:\nS3 Deployments\nBucket (Read)", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_cognito [label="IAM Policy:\nCognito User Pool", shape=note, style=filled, fillcolor=lightsalmon];
+    }
+
+    // ==========================================================================
+    // SSM PARAMETER STORE (PROD)
+    // ==========================================================================
+    subgraph cluster_ssm {
+      label="SSM Parameter Store (PROD)";
+      style=filled;
+      fillcolor=khaki;
+      fontsize=11;
+      
+      ssm_backend [label="Parameters:\nbackend-api\n(NODE_ENV=production\nDB config, Cognito)", shape=folder, style=filled, fillcolor=gold];
+      ssm_driver [label="Parameters:\nweb-driver\n(NODE_ENV=production)", shape=folder, style=filled, fillcolor=gold];
+    }
+
+    // ==========================================================================
+    // CLOUDWATCH (PROD GRADE)
+    // ==========================================================================
+    subgraph cluster_cloudwatch {
+      label="CloudWatch Monitoring (PROD - Enhanced)";
+      style=filled;
+      fillcolor=lavender;
+      fontsize=11;
+      
+      cw_logs [label="Log Groups:\n/prod/ridebooking/backend-api\n/prod/ridebooking/web-driver\n(30-day retention)", shape=folder, style=filled, fillcolor=mediumpurple];
+      cw_alarms [label="Alarms (Stricter):\nALB 5XX, Unhealthy Hosts\nTarget Response Time\nRDS CPU, Storage,\nConnections, Replica Lag\n(60s period, 2 eval)", shape=component, style=filled, fillcolor=mediumpurple];
+      sns_topic [label="SNS Topic\nAlarm Notifications\n(Email/PagerDuty)", shape=component, style=filled, fillcolor=plum];
+    }
+  }
+
+  // ============================================================================
+  // CONNECTIONS - EXTERNAL TO ROUTE53 & ALB
+  // ============================================================================
+  users -> route53 [label="DNS queries", color=blue];
+  route53 -> alb [label="api.d2.fikri.dev\ndriver.d2.fikri.dev\nA record (Alias)", color=blue];
+
+  // ============================================================================
+  // CI/CD CONNECTIONS
+  // ============================================================================
+  github_actions -> cicd_role [label="OIDC Assume Role\n(prod environment)", color=gold, penwidth=2];
+  cicd_role -> s3_deployments [label="Upload artifacts\n(S3 PutObject)", color=green];
+  cicd_role -> backend_a1 [label="SSM SendCommand\n(Rolling Deploy)", color=darkorange, style=dashed];
+  cicd_role -> backend_a2 [style=invis];
+  cicd_role -> driver_a1 [label="SSM SendCommand\n(Rolling Deploy)", color=darkorange, style=dashed];
+  cicd_role -> ssm_backend [label="Read config\n(GetParameter)", color=gold, style=dashed];
+
+  // ============================================================================
+  // ALB CONNECTIONS
+  // ============================================================================
+  alb -> alb_node_a [style=invis];
+  alb -> alb_node_b [style=invis];
+  alb -> alb_node_c [style=invis];
+  igw -> alb [label="HTTPS traffic", color=darkorange];
+  acm_alb -> alb [label="TLS cert", style=dashed, color=gold];
+  
+  // ALB to Backend ASG (all instances)
+  alb -> backend_a1 [label="api.d2.fikri.dev\nTarget Group\nHealth Check: /health", color=red, penwidth=2];
+  alb -> backend_a2 [color=red, penwidth=2];
+  alb -> backend_b1 [color=red, penwidth=2];
+  alb -> backend_c1 [color=red, penwidth=2];
+  
+  // ALB to Driver ASG (all instances)
+  alb -> driver_a1 [label="driver.d2.fikri.dev\nTarget Group\nHealth Check: /health", color=red, penwidth=2];
+  alb -> driver_a2 [color=red, penwidth=2];
+  alb -> driver_b1 [color=red, penwidth=2];
+
+  // ============================================================================
+  // NAT GATEWAY CONNECTIONS (MULTI-AZ)
+  // ============================================================================
+  igw -> nat_gw_a [label="Internet access", color=blue];
+  igw -> nat_gw_b [label="Internet access", color=blue];
+  igw -> nat_gw_c [label="Internet access", color=blue];
+  
+  nat_gw_a -> backend_a1 [label="Outbound\n(patches, artifacts)", color=blue, style=dashed];
+  nat_gw_a -> driver_a1 [label="Outbound", color=blue, style=dashed];
+  nat_gw_b -> backend_b1 [label="Outbound", color=blue, style=dashed];
+
+  // ============================================================================
+  // EC2 TO RDS (BACKEND ONLY)
+  // ============================================================================
+  backend_a1 -> rds_primary [label="MySQL 3306\nIAM Auth Token\nTLS/SSL", color=purple, penwidth=2];
+  backend_a2 -> rds_primary [color=purple, penwidth=2];
+  backend_b1 -> rds_primary [color=purple, penwidth=2];
+  backend_c1 -> rds_primary [color=purple, penwidth=2];
+  
+  rds_primary -> rds_standby [label="Synchronous\nReplication\n(Multi-AZ)", color=purple, style=dashed];
+
+  // ============================================================================
+  // EC2 TO SSM PARAMETER STORE
+  // ============================================================================
+  backend_a1 -> ssm_backend [label="Read config\non startup", color=darkorange];
+  driver_a1 -> ssm_driver [label="Read config\non startup", color=darkorange];
+
+  // ============================================================================
+  // EC2 TO VPC ENDPOINTS (OPTIONAL)
+  // ============================================================================
+  backend_a1 -> vpce_ssm [label="SSM API calls", color=steelblue, style=dashed];
+  backend_a1 -> vpce_ssmmessages [label="Session Manager", color=steelblue, style=dashed];
+  backend_a1 -> vpce_ec2messages [label="SSM Agent", color=steelblue, style=dashed];
+  driver_a1 -> vpce_ssm [label="SSM API calls", color=steelblue, style=dashed];
+
+  // ============================================================================
+  // IAM ROLE ASSOCIATIONS (SEPARATE ROLES)
+  // ============================================================================
+  iam_role_backend -> backend_a1 [label="Attached to ASG\nLaunch Template", style=dashed, color=red];
+  iam_role_driver -> driver_a1 [label="Attached to ASG\nLaunch Template", style=dashed, color=red];
+  
+  iam_policy_rds -> iam_role_backend [label="Attached", style=dashed];
+  iam_policy_ssm -> iam_role_backend [label="Attached", style=dashed];
+  iam_policy_ssm -> iam_role_driver [label="Attached", style=dashed];
+  iam_policy_s3 -> iam_role_backend [label="Attached", style=dashed];
+  iam_policy_s3 -> iam_role_driver [label="Attached", style=dashed];
+  iam_policy_cognito -> iam_role_backend [label="Attached", style=dashed];
+
+  // ============================================================================
+  // S3 DEPLOYMENTS BUCKET
+  // ============================================================================
+  backend_a1 -> s3_deployments [label="Download artifacts\n(via IAM role)", color=green, style=dashed];
+  driver_a1 -> s3_deployments [label="Download artifacts\n(via IAM role)", color=green, style=dashed];
+
+  // ============================================================================
+  // COGNITO INTEGRATION
+  // ============================================================================
+  backend_a1 -> cognito [label="JWT validation\nUser pool queries", color=plum, penwidth=2];
+  driver_a1 -> cognito [label="Auth redirect\nToken exchange", color=plum, penwidth=2];
+  users -> cognito [label="Login/Signup\n(Hosted UI)", color=blue];
+
+  // ============================================================================
+  // CLOUDWATCH MONITORING
+  // ============================================================================
+  backend_a1 -> cw_logs [label="Application logs\n(All instances)", color=purple];
+  driver_a1 -> cw_logs [label="Application logs\n(All instances)", color=purple];
+  alb -> cw_alarms [label="ALB metrics\n(5XX, unhealthy hosts)", color=purple, style=dashed];
+  rds_primary -> cw_alarms [label="RDS metrics\n(CPU, storage, lag)", color=purple, style=dashed];
+  cw_alarms -> sns_topic [label="Alarm triggered", color=red];
+  sns_topic -> users [label="Email/Pager\nnotification", color=red, style=dashed];
+
+  // ============================================================================
+  // SECURITY GROUP ASSOCIATIONS (LOGICAL)
+  // ============================================================================
+  sg_alb -> alb [style=invis];
+  sg_backend -> backend_a1 [style=invis];
+  sg_driver -> driver_a1 [style=invis];
+  sg_rds -> rds_primary [style=invis];
+  sg_vpce -> vpce_ssm [style=invis];
+
+  // ============================================================================
+  // AUTO SCALING (LOGICAL REPRESENTATION)
+  // ============================================================================
+  asg_backend [label="Auto Scaling\nBackend API\nMin: 2, Desired: 4\nMax: 10\nTarget Tracking", shape=component, style=filled, fillcolor=gold];
+  asg_driver [label="Auto Scaling\nWeb Driver\nMin: 2, Desired: 3\nMax: 6\nTarget Tracking", shape=component, style=filled, fillcolor=gold];
+  
+  asg_backend -> backend_a1 [style=invis];
+  asg_driver -> driver_a1 [style=invis];
+
+  // ============================================================================
+  // LEGEND
+  // ============================================================================
+  subgraph cluster_legend {
+    label="PRODUCTION Architecture Legend";
+    style=filled;
+    fillcolor=white;
+    fontsize=10;
+    
+    legend [label="Key PROD Differences from DEV:\n\n✓ Multi-AZ: 3 Availability Zones\n✓ Auto Scaling Groups (not single EC2)\n✓ Separate IAM roles per service\n✓ Multi-AZ RDS with standby\n✓ Multiple NAT Gateways (HA)\n✓ Deletion protection on RDS\n✓ GitHub Actions OIDC role\n✓ Stricter CloudWatch alarms\n✓ No Bastion (SSM only)\n✓ force_destroy=false on S3\n✓ Dedicated security groups\n\nTraffic Types:\n━━ Primary Application Traffic\n┈┈ Optional/Secondary Traffic\n━━ Data Flow\n┈┈ Configuration/IAM\n\nColors:\n■ Blue: Internet/DNS\n■ Green: Storage (S3)\n■ Orange: Load Balancing\n■ Yellow: Backend Compute\n■ Cyan: Driver Compute\n■ Pink: Database\n■ Purple: Monitoring/Logging\n■ Plum: Authentication\n■ Gold: Certificates/Auto Scaling\n■ Steel Blue: VPC Endpoints", shape=note, style=filled, fillcolor=ivory];
+  }
+}

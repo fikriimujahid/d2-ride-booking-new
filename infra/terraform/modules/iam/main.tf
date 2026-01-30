@@ -282,16 +282,3 @@ resource "aws_iam_instance_profile" "app_host" {
     }
   )
 }
-
-# ========================================
-
-# SSM SERVICE ROLE (Run Command output -> CloudWatch Logs)
-
-# ========================================
-
-# This role is used by SSM *service* when you enable --cloud-watch-output-config.
-
-# Without it, CloudWatch output can be enabled but still not appear.
-
-
-

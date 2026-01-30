@@ -4,16 +4,16 @@ locals {
   effective_app_root = var.app_root != "" ? var.app_root : "/opt/apps/${var.service_name}"
   effective_pm2_app  = var.pm2_app_name != "" ? var.pm2_app_name : var.service_name
   name               = "${var.environment}-${var.project_name}-${var.service_name}"
-  
+
   # For consolidated app-host, we need log groups for both services
   # For single-service instances, just use the service_name
   is_multi_app = var.enable_backend_api && var.enable_web_driver
-  
+
   # Log groups to create (list)
   log_groups = local.is_multi_app ? [
     "/${var.environment}/backend-api",
     "/${var.environment}/web-driver"
-  ] : [
+    ] : [
     "/${var.environment}/${var.service_name}"
   ]
 }
@@ -26,7 +26,7 @@ data "aws_ssm_parameter" "al2023_ami" {
 # Create CloudWatch log groups for each service
 resource "aws_cloudwatch_log_group" "service" {
   for_each = toset(local.log_groups)
-  
+
   name              = each.value
   retention_in_days = 14
   tags = merge(var.tags, {
@@ -43,12 +43,12 @@ resource "aws_instance" "backend" {
   associate_public_ip_address = false
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh", {
-    environment         = var.environment,
-    service_name        = var.service_name,
-    pm2_app_name        = local.effective_pm2_app,
+    environment  = var.environment,
+    service_name = var.service_name,
+    pm2_app_name = local.effective_pm2_app,
     # For multi-app setup
-    enable_backend_api  = var.enable_backend_api,
-    enable_web_driver   = var.enable_web_driver
+    enable_backend_api = var.enable_backend_api,
+    enable_web_driver  = var.enable_web_driver
   })
 
   metadata_options {

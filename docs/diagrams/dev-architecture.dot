@@ -1,0 +1,361 @@
+digraph dev_architecture {
+  // Graph settings
+  rankdir=TB;
+  compound=true;
+  newrank=true;
+  splines=ortho;
+  nodesep=0.8;
+  ranksep=1.2;
+  
+  node [shape=box, style=rounded, fontname="Arial", fontsize=10];
+  edge [fontname="Arial", fontsize=9];
+
+  // ============================================================================
+  // EXTERNAL LAYER - USERS & DNS
+  // ============================================================================
+  subgraph cluster_external {
+    label="External Users & DNS";
+    style=dashed;
+    color=blue;
+    fontsize=12;
+    
+    users [label="End Users\n(Admin, Driver,\nPassenger)", shape=person, style=filled, fillcolor=lightblue];
+    route53 [label="Route 53\nHosted Zone\nd2.fikri.dev", shape=cylinder, style=filled, fillcolor=orange];
+  }
+
+  // ============================================================================
+  // GLOBAL SERVICES (us-east-1)
+  // ============================================================================
+  subgraph cluster_global {
+    label="Global Services (us-east-1)";
+    style=filled;
+    fillcolor=lightyellow;
+    fontsize=12;
+    
+    acm_cloudfront [label="ACM Certificate\n*.d2.fikri.dev\n(CloudFront)\nus-east-1", shape=note, style=filled, fillcolor=gold];
+  }
+
+  // ============================================================================
+  // AWS REGION (ap-southeast-1)
+  // ============================================================================
+  subgraph cluster_region {
+    label="AWS Region: ap-southeast-1";
+    style=filled;
+    fillcolor=whitesmoke;
+    fontsize=14;
+
+    // ==========================================================================
+    // CLOUDFRONT & STATIC SITES
+    // ==========================================================================
+    subgraph cluster_cloudfront {
+      label="CloudFront Distributions";
+      style=filled;
+      fillcolor=lightcyan;
+      fontsize=11;
+      
+      cf_admin [label="CloudFront\nadmin.d2.fikri.dev\nOAI-protected", shape=component, style=filled, fillcolor=cyan];
+      cf_passenger [label="CloudFront\npassenger.d2.fikri.dev\nOAI-protected", shape=component, style=filled, fillcolor=cyan];
+    }
+
+    // ==========================================================================
+    // S3 BUCKETS
+    // ==========================================================================
+    subgraph cluster_s3 {
+      label="S3 Storage";
+      style=filled;
+      fillcolor=lightgreen;
+      fontsize=11;
+      
+      s3_admin [label="S3 Bucket\nweb-admin\n(Private)", shape=cylinder, style=filled, fillcolor=green];
+      s3_passenger [label="S3 Bucket\nweb-passenger\n(Private)", shape=cylinder, style=filled, fillcolor=green];
+      s3_deployments [label="S3 Bucket\nDeployment Artifacts\n(Versioned)", shape=cylinder, style=filled, fillcolor=green];
+    }
+
+    // ==========================================================================
+    // COGNITO
+    // ==========================================================================
+    cognito [label="Cognito\nUser Pool\n(RBAC: admin,\ndriver, passenger)", shape=component, style=filled, fillcolor=plum];
+
+    // ==========================================================================
+    // ACM CERTIFICATE (REGIONAL)
+    // ==========================================================================
+    acm_alb [label="ACM Certificate\n*.d2.fikri.dev\n(ALB)\nap-southeast-1", shape=note, style=filled, fillcolor=gold];
+
+    // ==========================================================================
+    // VPC
+    // ==========================================================================
+    subgraph cluster_vpc {
+      label="VPC (10.0.0.0/16)";
+      style=filled;
+      fillcolor=lightgray;
+      fontsize=12;
+
+      // ========================================================================
+      // INTERNET GATEWAY
+      // ========================================================================
+      igw [label="Internet Gateway", shape=diamond, style=filled, fillcolor=skyblue];
+
+      // ========================================================================
+      // PUBLIC SUBNET (MULTI-AZ)
+      // ========================================================================
+      subgraph cluster_public {
+        label="Public Subnets (Multi-AZ)";
+        style=filled;
+        fillcolor=lightblue;
+        fontsize=11;
+        
+        subgraph cluster_public_a {
+          label="Public Subnet A\nap-southeast-1a\n10.0.1.0/24";
+          style=filled;
+          fillcolor=aliceblue;
+          fontsize=10;
+          
+          nat_gw [label="NAT Gateway\n(EIP attached)", shape=diamond, style=filled, fillcolor=skyblue];
+          bastion [label="Bastion Host\n(SSM + SSH)\nPublic IP", shape=box3d, style=filled, fillcolor=wheat];
+          alb_node_a [label="ALB Node\n(AZ-A)", shape=component, style=filled, fillcolor=orange];
+        }
+        
+        subgraph cluster_public_b {
+          label="Public Subnet B\nap-southeast-1b\n10.0.2.0/24";
+          style=filled;
+          fillcolor=aliceblue;
+          fontsize=10;
+          
+          alb_node_b [label="ALB Node\n(AZ-B)", shape=component, style=filled, fillcolor=orange];
+        }
+      }
+
+      // ========================================================================
+      // APPLICATION LOAD BALANCER (LOGICAL)
+      // ========================================================================
+      alb [label="Application Load Balancer\nHTTPS (443)\nHTTP (80→443)", shape=component, style=filled, fillcolor=darkorange];
+
+      // ========================================================================
+      // PRIVATE SUBNET (MULTI-AZ)
+      // ========================================================================
+      subgraph cluster_private {
+        label="Private Subnets (Multi-AZ)";
+        style=filled;
+        fillcolor=mistyrose;
+        fontsize=11;
+        
+        subgraph cluster_private_a {
+          label="Private Subnet A\nap-southeast-1a\n10.0.3.0/24";
+          style=filled;
+          fillcolor=lavenderblush;
+          fontsize=10;
+          
+          // CONSOLIDATED EC2 INSTANCE
+          subgraph cluster_ec2 {
+            label="EC2 App Host (Consolidated)\nt3.medium";
+            style=filled;
+            fillcolor=lightyellow;
+            fontsize=10;
+            
+            backend_api [label="backend-api\nPort 3000\n/opt/apps/backend-api\nPM2 process", shape=component, style=filled, fillcolor=yellow];
+            web_driver [label="web-driver\nPort 3001\n/opt/apps/web-driver\nPM2 process", shape=component, style=filled, fillcolor=yellow];
+          }
+          
+          rds_primary [label="RDS MySQL\nPrimary Instance\ndb.t3.micro\nIAM Auth Enabled", shape=cylinder, style=filled, fillcolor=pink];
+        }
+        
+        subgraph cluster_private_b {
+          label="Private Subnet B\nap-southeast-1b\n10.0.4.0/24";
+          style=filled;
+          fillcolor=lavenderblush;
+          fontsize=10;
+          
+          rds_standby [label="RDS Standby\n(Multi-AZ disabled\nin DEV)", shape=cylinder, style=dashed, fillcolor=lightpink];
+        }
+      }
+
+      // ========================================================================
+      // VPC ENDPOINTS
+      // ========================================================================
+      subgraph cluster_vpc_endpoints {
+        label="VPC Endpoints (PrivateLink)";
+        style=filled;
+        fillcolor=lightsteelblue;
+        fontsize=10;
+        
+        vpce_ssm [label="SSM Endpoint", shape=component, style=filled, fillcolor=steelblue];
+        vpce_ssmmessages [label="SSM Messages\nEndpoint", shape=component, style=filled, fillcolor=steelblue];
+        vpce_ec2messages [label="EC2 Messages\nEndpoint", shape=component, style=filled, fillcolor=steelblue];
+      }
+
+      // ========================================================================
+      // SECURITY GROUPS (LOGICAL)
+      // ========================================================================
+      subgraph cluster_security_groups {
+        label="Security Groups";
+        style=dashed;
+        color=red;
+        fontsize=10;
+        
+        sg_alb [label="SG: ALB\nIngress: 80, 443\nfrom 0.0.0.0/0", shape=note, style=filled, fillcolor=mistyrose];
+        sg_app_host [label="SG: App Host\nIngress: 3000, 3001\nfrom ALB SG", shape=note, style=filled, fillcolor=mistyrose];
+        sg_rds [label="SG: RDS\nIngress: 3306\nfrom App Host SG\n& Bastion SG", shape=note, style=filled, fillcolor=mistyrose];
+        sg_bastion [label="SG: Bastion\nIngress: 22 (optional)\nSSM Session Manager", shape=note, style=filled, fillcolor=mistyrose];
+        sg_vpce [label="SG: VPC Endpoints\nIngress: 443\nfrom VPC CIDR", shape=note, style=filled, fillcolor=mistyrose];
+      }
+    }
+
+    // ==========================================================================
+    // IAM ROLES & POLICIES
+    // ==========================================================================
+    subgraph cluster_iam {
+      label="IAM (Identity & Access Management)";
+      style=filled;
+      fillcolor=lightcoral;
+      fontsize=11;
+      
+      iam_role_app [label="IAM Role:\nApp Host Instance\nProfile", shape=folder, style=filled, fillcolor=coral];
+      iam_policy_rds [label="IAM Policy:\nRDS IAM Auth", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_ssm [label="IAM Policy:\nSSM Parameters\n& Session Manager", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_s3 [label="IAM Policy:\nS3 Deployments\nBucket", shape=note, style=filled, fillcolor=lightsalmon];
+      iam_policy_cognito [label="IAM Policy:\nCognito User Pool", shape=note, style=filled, fillcolor=lightsalmon];
+    }
+
+    // ==========================================================================
+    // SSM PARAMETER STORE
+    // ==========================================================================
+    subgraph cluster_ssm {
+      label="SSM Parameter Store";
+      style=filled;
+      fillcolor=khaki;
+      fontsize=11;
+      
+      ssm_backend [label="Parameters:\nbackend-api\n(DB config, Cognito,\nCORS, etc.)", shape=folder, style=filled, fillcolor=gold];
+      ssm_driver [label="Parameters:\nweb-driver\n(NODE_ENV, PORT)", shape=folder, style=filled, fillcolor=gold];
+    }
+
+    // ==========================================================================
+    // CLOUDWATCH
+    // ==========================================================================
+    subgraph cluster_cloudwatch {
+      label="CloudWatch Monitoring";
+      style=filled;
+      fillcolor=lavender;
+      fontsize=11;
+      
+      cw_logs [label="Log Groups:\n/dev/ridebooking/backend-api\n/dev/ridebooking/web-driver\n(7-day retention)", shape=folder, style=filled, fillcolor=mediumpurple];
+      cw_alarms [label="Alarms:\nEC2 CPU, Status Checks\nRDS CPU, Storage,\nConnections", shape=component, style=filled, fillcolor=mediumpurple];
+      sns_topic [label="SNS Topic\nAlarm Notifications\n(Email)", shape=component, style=filled, fillcolor=plum];
+    }
+  }
+
+  // ============================================================================
+  // CONNECTIONS - EXTERNAL TO CLOUDFRONT
+  // ============================================================================
+  users -> route53 [label="DNS queries", color=blue];
+  route53 -> cf_admin [label="admin.d2.fikri.dev\nCNAME", color=blue];
+  route53 -> cf_passenger [label="passenger.d2.fikri.dev\nCNAME", color=blue];
+  route53 -> alb [label="api.d2.fikri.dev\ndriver.d2.fikri.dev\nA record (Alias)", color=blue];
+
+  // ============================================================================
+  // CLOUDFRONT TO S3
+  // ============================================================================
+  cf_admin -> s3_admin [label="OAI access\n(Origin)", color=green];
+  cf_passenger -> s3_passenger [label="OAI access\n(Origin)", color=green];
+  acm_cloudfront -> cf_admin [label="TLS cert", style=dashed, color=gold];
+  acm_cloudfront -> cf_passenger [label="TLS cert", style=dashed, color=gold];
+
+  // ============================================================================
+  // ALB CONNECTIONS
+  // ============================================================================
+  alb -> alb_node_a [style=invis];
+  alb -> alb_node_b [style=invis];
+  igw -> alb [label="HTTPS traffic", color=darkorange];
+  acm_alb -> alb [label="TLS cert", style=dashed, color=gold];
+  
+  alb -> backend_api [label="api.d2.fikri.dev\nTarget: :3000\n/health", color=red, penwidth=2];
+  alb -> web_driver [label="driver.d2.fikri.dev\nTarget: :3001\n/health", color=red, penwidth=2];
+
+  // ============================================================================
+  // VPC CONNECTIVITY
+  // ============================================================================
+  igw -> nat_gw [label="Internet access", color=blue];
+  nat_gw -> backend_api [label="Outbound traffic\n(via route table)", color=blue, style=dashed];
+  nat_gw -> web_driver [label="Outbound traffic\n(via route table)", color=blue, style=dashed];
+
+  // ============================================================================
+  // EC2 TO RDS
+  // ============================================================================
+  backend_api -> rds_primary [label="MySQL 3306\nIAM Auth Token\nTLS/SSL", color=purple, penwidth=2];
+
+  // ============================================================================
+  // EC2 TO SSM PARAMETER STORE
+  // ============================================================================
+  backend_api -> ssm_backend [label="Read runtime config\non startup", color=darkorange];
+  web_driver -> ssm_driver [label="Read runtime config\non startup", color=darkorange];
+
+  // ============================================================================
+  // EC2 TO VPC ENDPOINTS
+  // ============================================================================
+  backend_api -> vpce_ssm [label="SSM API calls", color=steelblue];
+  backend_api -> vpce_ssmmessages [label="Session Manager", color=steelblue];
+  backend_api -> vpce_ec2messages [label="SSM Agent", color=steelblue];
+  web_driver -> vpce_ssm [label="SSM API calls", color=steelblue];
+  web_driver -> vpce_ssmmessages [label="Session Manager", color=steelblue];
+
+  // ============================================================================
+  // BASTION CONNECTIONS
+  // ============================================================================
+  bastion -> rds_primary [label="MySQL 3306\n(Optional for\nDB management)", color=purple, style=dashed];
+  igw -> bastion [label="SSH (optional)\nSSM Session Manager", color=blue, style=dashed];
+
+  // ============================================================================
+  // IAM ROLE ASSOCIATIONS
+  // ============================================================================
+  iam_role_app -> backend_api [label="Attached to\nEC2 instance", style=dashed, color=red];
+  iam_role_app -> web_driver [style=invis];
+  iam_policy_rds -> iam_role_app [label="Attached", style=dashed];
+  iam_policy_ssm -> iam_role_app [label="Attached", style=dashed];
+  iam_policy_s3 -> iam_role_app [label="Attached", style=dashed];
+  iam_policy_cognito -> iam_role_app [label="Attached", style=dashed];
+
+  // ============================================================================
+  // S3 DEPLOYMENTS BUCKET
+  // ============================================================================
+  backend_api -> s3_deployments [label="Download artifacts\n(via IAM role)", color=green, style=dashed];
+  web_driver -> s3_deployments [label="Download artifacts\n(via IAM role)", color=green, style=dashed];
+
+  // ============================================================================
+  // COGNITO INTEGRATION
+  // ============================================================================
+  backend_api -> cognito [label="JWT validation\nUser pool queries", color=plum, penwidth=2];
+  web_driver -> cognito [label="Auth redirect\nToken exchange", color=plum, penwidth=2];
+  users -> cognito [label="Login/Signup\n(Hosted UI)", color=blue];
+
+  // ============================================================================
+  // CLOUDWATCH MONITORING
+  // ============================================================================
+  backend_api -> cw_logs [label="Application logs\n(PM2 → CloudWatch)", color=purple];
+  web_driver -> cw_logs [label="Application logs\n(PM2 → CloudWatch)", color=purple];
+  backend_api -> cw_alarms [label="EC2 metrics", color=purple, style=dashed];
+  rds_primary -> cw_alarms [label="RDS metrics", color=purple, style=dashed];
+  cw_alarms -> sns_topic [label="Alarm triggered", color=red];
+  sns_topic -> users [label="Email notification", color=red, style=dashed];
+
+  // ============================================================================
+  // SECURITY GROUP ASSOCIATIONS (LOGICAL)
+  // ============================================================================
+  sg_alb -> alb [style=invis];
+  sg_app_host -> backend_api [style=invis];
+  sg_app_host -> web_driver [style=invis];
+  sg_rds -> rds_primary [style=invis];
+  sg_bastion -> bastion [style=invis];
+  sg_vpce -> vpce_ssm [style=invis];
+
+  // ============================================================================
+  // LEGEND
+  // ============================================================================
+  subgraph cluster_legend {
+    label="Legend";
+    style=filled;
+    fillcolor=white;
+    fontsize=10;
+    
+    legend [label="Traffic Types:\n━━ Primary Application Traffic\n┈┈ Optional/Secondary Traffic\n━━ Data Flow\n┈┈ Configuration/IAM\n\nColors:\n■ Blue: Internet/DNS\n■ Green: Storage (S3)\n■ Orange: Load Balancing\n■ Yellow: Compute (EC2)\n■ Pink: Database\n■ Purple: Monitoring/Logging\n■ Plum: Authentication\n■ Gold: Certificates\n■ Steel Blue: VPC Endpoints", shape=note, style=filled, fillcolor=ivory];
+  }
+}

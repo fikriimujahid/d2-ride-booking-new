@@ -57,9 +57,40 @@ variable "alb_security_group_id" {
   type        = string
 }
 
-variable "target_instance_id" {
-  description = "Backend EC2 instance ID to register"
+variable "attach_targets" {
+  description = "Whether this module should attach concrete instance IDs to the target groups. DEV (single EC2) uses true; PROD (ASG) should use false and let the ASG register targets."
+  type        = bool
+  default     = true
+}
+
+variable "backend_target_type" {
+  description = "Target type for backend target group. Use 'instance' for EC2/ASG, 'ip' for IP targets."
   type        = string
+  default     = "instance"
+}
+
+variable "driver_target_type" {
+  description = "Target type for driver target group. Use 'instance' for EC2/ASG, 'ip' for IP targets."
+  type        = string
+  default     = "instance"
+}
+
+variable "deregistration_delay_seconds" {
+  description = "Target group deregistration delay in seconds (drain time during deploy/scale-in)."
+  type        = number
+  default     = 30
+}
+
+variable "enable_host_routing" {
+  description = "If true, create explicit host-based rules for api.<domain> and driver.<domain>, and set the default HTTPS action to 404. PROD should keep this true."
+  type        = bool
+  default     = false
+}
+
+variable "target_instance_id" {
+  description = "Backend EC2 instance ID to register (only used when attach_targets=true)"
+  type        = string
+  default     = ""
 }
 
 variable "driver_target_instance_id" {

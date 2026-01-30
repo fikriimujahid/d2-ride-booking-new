@@ -106,7 +106,8 @@ resource "aws_lb_target_group" "backend" {
   #
   # - "lambda": AWS Lambda functions
   #   - For serverless architectures
-  target_type = "instance"
+  target_type          = var.backend_target_type
+  deregistration_delay = var.deregistration_delay_seconds
 
   vpc_id = var.vpc_id
 
@@ -150,11 +151,12 @@ resource "aws_lb_target_group" "backend" {
 resource "aws_lb_target_group" "driver_web" {
   count = var.enable_driver_web ? 1 : 0
 
-  name        = "${var.environment}-${var.project_name}-driver-web"
-  port        = var.driver_target_port
-  protocol    = "HTTP"
-  target_type = "instance"
-  vpc_id      = var.vpc_id
+  name                 = "${var.environment}-${var.project_name}-driver-web"
+  port                 = var.driver_target_port
+  protocol             = "HTTP"
+  target_type          = var.driver_target_type
+  deregistration_delay = var.deregistration_delay_seconds
+  vpc_id               = var.vpc_id
 
   health_check {
     enabled             = true
@@ -300,27 +302,48 @@ resource "aws_lb_listener" "https" {
   # --------------------------------------------------------------------------
   certificate_arn = var.certificate_arn
 
-  # --------------------------------------------------------------------------
-  # default_action: What to do with requests received on this listener
-  # --------------------------------------------------------------------------
-  # WHAT IT DOES: Defines how to handle HTTPS requests
-  # This is the "main" action - forwarding to backend servers
-  default_action {
-    # ------------------------------------------------------------------------
-    # type: Which kind of action to perform
-    # ------------------------------------------------------------------------
-    # TYPES OF ACTIONS:
-    # - "forward": Send to target group (what we use)
-    # - "redirect": Send to different URL (used in HTTP listener)
-    # - "fixed-response": Return static content
-    # - "authenticate-oidc": Require login (OAuth/OIDC)
-    # - "authenticate-cognito": Require login (AWS Cognito)
-    type = "forward"
+  dynamic "default_action" {
+    # PROD posture: explicit host rules only; default should be a hard 404.
+    for_each = var.enable_host_routing ? [1] : []
+    content {
+      type = "fixed-response"
 
-    # ------------------------------------------------------------------------
-    # target_group_arn: Which target group to forward to
-    # ------------------------------------------------------------------------
+      fixed_response {
+        content_type = "text/plain"
+        message_body = "Not Found"
+        status_code  = "404"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    # DEV posture: forward by default (keeps setup simple/cheap).
+    for_each = var.enable_host_routing ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.backend.arn
+    }
+  }
+}
+
+# ------------------------------------------------------------------------------
+# HTTPS LISTENER RULE - api.<domain_name> -> backend target group
+# ------------------------------------------------------------------------------
+resource "aws_lb_listener_rule" "api_host" {
+  count = (var.enable_https && var.enable_host_routing) ? 1 : 0
+
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 5
+
+  action {
+    type             = "forward"
     target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    host_header {
+      values = ["api.${var.domain_name}"]
+    }
   }
 }
 
@@ -351,6 +374,7 @@ resource "aws_lb_listener_rule" "driver_host" {
 # WHAT IS THIS RESOURCE?
 # - Registers a specific EC2 instance to receive traffic from the ALB
 resource "aws_lb_target_group_attachment" "backend_instance" {
+  count = var.attach_targets ? 1 : 0
   # --------------------------------------------------------------------------
   # target_group_arn: Which target group to add this server to
   # --------------------------------------------------------------------------
@@ -361,10 +385,17 @@ resource "aws_lb_target_group_attachment" "backend_instance" {
   # --------------------------------------------------------------------------
   target_id = var.target_instance_id
   port      = var.target_port
+
+  lifecycle {
+    precondition {
+      condition     = var.target_instance_id != ""
+      error_message = "attach_targets=true requires target_instance_id to be set."
+    }
+  }
 }
 
 resource "aws_lb_target_group_attachment" "driver_instance" {
-  count = var.enable_driver_web ? 1 : 0
+  count = (var.attach_targets && var.enable_driver_web) ? 1 : 0
 
   target_group_arn = aws_lb_target_group.driver_web[0].arn
   target_id        = var.driver_target_instance_id
@@ -382,4 +413,29 @@ output "alb_dns_name" {
 output "alb_zone_id" {
   value       = aws_lb.this.zone_id
   description = "ALB hosted zone id (required for Route53 alias records)"
+}
+
+output "alb_arn_suffix" {
+  value       = aws_lb.this.arn_suffix
+  description = "ALB ARN suffix (for CloudWatch dimensions)"
+}
+
+output "backend_target_group_arn" {
+  value       = aws_lb_target_group.backend.arn
+  description = "Backend target group ARN (useful for ASG attachment)"
+}
+
+output "backend_target_group_arn_suffix" {
+  value       = aws_lb_target_group.backend.arn_suffix
+  description = "Backend target group ARN suffix (for CloudWatch dimensions)"
+}
+
+output "driver_target_group_arn" {
+  value       = try(aws_lb_target_group.driver_web[0].arn, "")
+  description = "Driver target group ARN (useful for ASG attachment)"
+}
+
+output "driver_target_group_arn_suffix" {
+  value       = try(aws_lb_target_group.driver_web[0].arn_suffix, "")
+  description = "Driver target group ARN suffix (for CloudWatch dimensions)"
 }

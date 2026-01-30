@@ -94,3 +94,48 @@ variable "alarm_email" {
   description = "Email address for alarm notifications. Leave empty to skip email subscription. In DEV, consider using a team distribution list instead of personal emails to avoid spam."
   default     = ""
 }
+
+# --------------------------------------------------------------------------------
+# ALB / TARGET GROUP MONITORING (PROD)
+# --------------------------------------------------------------------------------
+variable "enable_alb_monitoring" {
+  type        = bool
+  description = "Enable ALB target health alarms (UnHealthyHostCount)."
+  default     = false
+}
+
+variable "alb_arn_suffix" {
+  type        = string
+  description = "ALB ARN suffix (dimension LoadBalancer)."
+  default     = ""
+}
+
+variable "backend_target_group_arn_suffix" {
+  type        = string
+  description = "Backend target group ARN suffix (dimension TargetGroup)."
+  default     = ""
+}
+
+variable "driver_target_group_arn_suffix" {
+  type        = string
+  description = "Driver target group ARN suffix (dimension TargetGroup)."
+  default     = ""
+}
+
+variable "alb_unhealthy_host_threshold" {
+  type        = number
+  description = "Alarm when UnHealthyHostCount >= this value."
+  default     = 1
+}
+
+variable "alb_alarm_period_seconds" {
+  type        = number
+  description = "CloudWatch alarm period for ALB target health. PROD should keep this short (e.g. 60)."
+  default     = 60
+}
+
+variable "alb_alarm_evaluation_periods" {
+  type        = number
+  description = "Evaluation periods for ALB target health alarms. PROD should be stricter than DEV."
+  default     = 2
+}
