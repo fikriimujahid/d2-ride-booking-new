@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - apps/web-admin/**
-      - .github/workflows/web-admin-ci-prod.yml
+      - apps/web-admins/**
+      - .github/workflows/web-admin-ci-prods.yml
 
 permissions:
   contents: read

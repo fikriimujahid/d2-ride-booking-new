@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - infra/terraform/**
-      - .github/workflows/infra-terraform-ci-prod.yml
+      - infra/terraforms/**
+      - .github/workflows/infra-terraform-ci-prods.yml
 
 # ------------------------------------------------------------------------------
 # CONCURRENCY CONTROL (Prevent multiple runs at the same time)
