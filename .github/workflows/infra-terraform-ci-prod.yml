@@ -188,7 +188,7 @@ jobs:
           scan-type: 'config'
           scan-ref: 'infra/terraform'
           # NOTE: keep skip-files single-line to avoid action shell parsing issues.
-          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json'
+          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json,**/tfplan'
           hide-progress: true
           format: 'table'
           severity: 'CRITICAL,HIGH'

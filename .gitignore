@@ -35,5 +35,6 @@ Thumbs.db
 **/plan.tfplan
 **/plan.json
 **/plan.txt
+**/tfplan
 **/crash.log
 **/crash.*.log
