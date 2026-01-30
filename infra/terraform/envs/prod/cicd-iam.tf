@@ -53,6 +53,62 @@ data "aws_iam_policy_document" "github_actions_prod_deploy" {
   }
 
   statement {
+    sid    = "S3DeployStaticSites"
+    effect = "Allow"
+    actions = [
+      "s3:ListBucket",
+      "s3:GetBucketLocation",
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListBucketMultipartUploads",
+      "s3:ListMultipartUploadParts"
+    ]
+    resources = [
+      module.web_admin_static_site.bucket_arn,
+      "${module.web_admin_static_site.bucket_arn}/*",
+      module.web_passenger_static_site.bucket_arn,
+      "${module.web_passenger_static_site.bucket_arn}/*"
+    ]
+  }
+
+  statement {
+    sid    = "KMSUseForStaticSiteUploads"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = [
+      module.web_admin_static_site.s3_kms_key_arn,
+      module.web_passenger_static_site.s3_kms_key_arn
+    ]
+  }
+
+  statement {
+    sid    = "CloudFrontInvalidateStaticSites"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateInvalidation"
+    ]
+    resources = [
+      format(
+        "arn:aws:cloudfront::%s:distribution/%s",
+        data.aws_caller_identity.current.account_id,
+        module.web_admin_static_site.cloudfront_distribution_id
+      ),
+      format(
+        "arn:aws:cloudfront::%s:distribution/%s",
+        data.aws_caller_identity.current.account_id,
+        module.web_passenger_static_site.cloudfront_distribution_id
+      )
+    ]
+  }
+
+  statement {
     sid    = "SSMReadRuntimeConfig"
     effect = "Allow"
     actions = [

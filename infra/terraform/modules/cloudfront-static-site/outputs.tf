@@ -8,6 +8,11 @@ output "bucket_arn" {
   value       = aws_s3_bucket.this.arn
 }
 
+output "s3_kms_key_arn" {
+  description = "KMS key ARN used for SSE-KMS on the origin bucket"
+  value       = aws_kms_key.s3.arn
+}
+
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution id"
   value       = aws_cloudfront_distribution.this.id
