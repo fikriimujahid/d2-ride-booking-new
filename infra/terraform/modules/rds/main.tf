@@ -256,7 +256,11 @@ resource "aws_db_instance" "main" {
       Environment = var.environment
       ManagedBy   = "Terraform"
       Purpose     = "Application Database"
-      CostControl = "Can be stopped/started via scripts"
+      # PROD NOTE:
+      # We intentionally do not stop production databases.
+      # Stopping an RDS instance breaks HA expectations, increases recovery risk,
+      # and complicates auditability. Use backups + Multi-AZ for durability.
+      CostControl = var.environment == "prod" ? "NeverStop" : "Can be stopped/started via scripts"
     }
   )
 }

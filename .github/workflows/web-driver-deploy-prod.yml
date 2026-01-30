@@ -1,0 +1,127 @@
+name: Web-Driver Deploy (Prod)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web-driver/**
+      - infra/scripts/deploy-*-prod.sh
+      - infra/scripts/deploy-service-rolling.sh
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Rollback/redeploy an existing artifact RELEASE_ID (leave blank to build+deploy new)."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: web-driver-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy web-driver to ASG via SSM (Prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: prod
+
+    defaults:
+      run:
+        working-directory: apps/web-driver
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release id
+        id: artifact
+        run: |
+          set -e
+          if [ -n "${{ inputs.release_id }}" ]; then
+            echo "release_id=${{ inputs.release_id }}" >> $GITHUB_OUTPUT
+            echo "[info] Using existing RELEASE_ID=${{ inputs.release_id }}"
+          else
+            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+            echo "release_id=$TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "[info] Generated RELEASE_ID=$TIMESTAMP"
+          fi
+
+      - name: Setup Node.js
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-driver/package-lock.json
+
+      - name: Install dependencies
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        run: npm ci
+
+      - name: Validate public env (Cognito)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        env:
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run validate:env
+
+      - name: Build
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run build
+
+      - name: Prune devDependencies (artifact only)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        run: npm prune --omit=dev
+
+      - name: Package deployment artifact
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        id: pkg
+        run: |
+          set -e
+          RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+
+          mkdir -p ../../artifact-web-driver
+          rm -rf ../../artifact-web-driver/*
+
+          cp -r .next ../../artifact-web-driver/
+          if [ -d public ]; then cp -r public ../../artifact-web-driver/; fi
+          cp ecosystem.config.js ../../artifact-web-driver/
+          cp package*.json ../../artifact-web-driver/
+          cp -r node_modules ../../artifact-web-driver/
+
+          tar -czf ../../web-driver-$RELEASE_ID.tar.gz -C ../../artifact-web-driver .
+          (cd ../.. && sha256sum "web-driver-$RELEASE_ID.tar.gz" > "web-driver-$RELEASE_ID.sha256")
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Upload artifact to S3
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.release_id == '' }}
+        run: |
+          RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+          aws s3 cp ../../web-driver-$RELEASE_ID.tar.gz \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.tar.gz
+          aws s3 cp ../../web-driver-$RELEASE_ID.sha256 \
+            s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.sha256
+
+      - name: Deploy to ASG using SSM (rolling, no SSH)
+        run: |
+          export AWS_REGION="${{ vars.AWS_REGION }}"
+          export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
+          export RELEASE_ID="${{ steps.artifact.outputs.release_id }}"
+          export ENVIRONMENT="prod"
+          export PROJECT_NAME="d2-ride-booking"
+
+          bash ../../infra/scripts/deploy-web-driver-prod.sh

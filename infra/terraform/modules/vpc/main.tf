@@ -10,6 +10,11 @@ locals {
   # - If "Project" doesn't exist, use "project" as fallback
   name_prefix = lookup(var.tags, "Project", "project")
   env         = lookup(var.tags, "Environment", "env")
+
+  # DB subnets are optional (PROD uses them; DEV typically does not).
+  enable_private_db_tier = length(var.private_db_subnet_cidrs) > 0
+  private_db_cidr        = try(var.private_db_subnet_cidrs[0], null)
+  private_db_cidr_secondary = try(var.private_db_subnet_cidrs[1], null)
 }
 
 # ----------------------------------------------------------------------------
@@ -242,6 +247,40 @@ resource "aws_subnet" "private_secondary" {
 }
 
 # ----------------------------------------------------------------------------
+# PRIVATE DB SUBNET (OPTIONAL)
+# ----------------------------------------------------------------------------
+# Separate DB subnet tier for PROD (e.g., RDS). Kept optional with safe defaults
+# so DEV behavior remains unchanged.
+resource "aws_subnet" "private_db" {
+  count = local.enable_private_db_tier && local.private_db_cidr != null ? 1 : 0
+
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = local.private_db_cidr
+  availability_zone = var.availability_zone
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-${local.env}-private-db-${var.availability_zone}"
+    Tier = "private-db"
+  })
+}
+
+# ----------------------------------------------------------------------------
+# SECONDARY PRIVATE DB SUBNET (OPTIONAL)
+# ----------------------------------------------------------------------------
+resource "aws_subnet" "private_db_secondary" {
+  count = local.enable_private_db_tier && local.private_db_cidr_secondary != null && var.availability_zone_secondary != null ? 1 : 0
+
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = local.private_db_cidr_secondary
+  availability_zone = var.availability_zone_secondary
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-${local.env}-private-db-${var.availability_zone_secondary}"
+    Tier = "private-db"
+  })
+}
+
+# ----------------------------------------------------------------------------
 # PUBLIC ROUTE TABLE
 # ----------------------------------------------------------------------------
 # *** WHAT IS A ROUTE TABLE? ***
@@ -358,6 +397,23 @@ resource "aws_route_table" "private" {
 }
 
 # ----------------------------------------------------------------------------
+# PRIVATE DB ROUTE TABLE (OPTIONAL)
+# ----------------------------------------------------------------------------
+# Separate route table for the DB tier.
+# Security default: no 0.0.0.0/0 route is added here.
+# - RDS (managed) typically doesn't require NAT for patching.
+# - If a future workload requires outbound internet from DB subnets, add an
+#   explicit variable and route in a backward-compatible way.
+resource "aws_route_table" "private_db" {
+  count  = local.enable_private_db_tier ? 1 : 0
+  vpc_id = aws_vpc.this.id
+
+  tags = merge(var.tags, {
+    Name = "${local.name_prefix}-${local.env}-private-db-rt"
+  })
+}
+
+# ----------------------------------------------------------------------------
 # PRIVATE ROUTE TABLE ASSOCIATION
 # ----------------------------------------------------------------------------
 # *** WHAT DOES THIS DO? ***
@@ -383,6 +439,23 @@ resource "aws_route_table_association" "private_secondary" {
 
   subnet_id      = aws_subnet.private_secondary[0].id
   route_table_id = aws_route_table.private.id
+}
+
+# ----------------------------------------------------------------------------
+# PRIVATE DB ROUTE TABLE ASSOCIATIONS (OPTIONAL)
+# ----------------------------------------------------------------------------
+resource "aws_route_table_association" "private_db" {
+  count = local.enable_private_db_tier && local.private_db_cidr != null ? 1 : 0
+
+  subnet_id      = aws_subnet.private_db[0].id
+  route_table_id = aws_route_table.private_db[0].id
+}
+
+resource "aws_route_table_association" "private_db_secondary" {
+  count = local.enable_private_db_tier && local.private_db_cidr_secondary != null && var.availability_zone_secondary != null ? 1 : 0
+
+  subnet_id      = aws_subnet.private_db_secondary[0].id
+  route_table_id = aws_route_table.private_db[0].id
 }
 
 # ----------------------------------------------------------------------------
