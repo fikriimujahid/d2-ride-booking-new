@@ -18,6 +18,34 @@ locals {
 }
 
 # ----------------------------------------------------------------------------
+# INPUT VALIDATION (CROSS-VARIABLE)
+# ----------------------------------------------------------------------------
+# Terraform variable `validation {}` blocks may only reference the variable
+# being validated. For module-wide checks (e.g., enable_multi_az implies other
+# inputs are required), use resource preconditions instead.
+resource "terraform_data" "input_validation" {
+  input = {
+    enable_multi_az             = var.enable_multi_az
+    az_count                    = var.az_count
+    public_subnet_cidr_secondary  = var.public_subnet_cidr_secondary
+    private_subnet_cidr_secondary = var.private_subnet_cidr_secondary
+    availability_zone_secondary   = var.availability_zone_secondary
+  }
+
+  lifecycle {
+    precondition {
+      condition = !var.enable_multi_az || (
+        var.az_count >= 2 &&
+        var.public_subnet_cidr_secondary != null &&
+        var.private_subnet_cidr_secondary != null &&
+        var.availability_zone_secondary != null
+      )
+      error_message = "When enable_multi_az is true, set az_count to 2 and provide public_subnet_cidr_secondary, private_subnet_cidr_secondary, and availability_zone_secondary."
+    }
+  }
+}
+
+# ----------------------------------------------------------------------------
 # VPC (Virtual Private Cloud)
 # ----------------------------------------------------------------------------
 # *** WHAT IS A VPC? ***
