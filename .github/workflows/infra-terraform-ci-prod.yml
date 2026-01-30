@@ -1,0 +1,106 @@
+# ============================================================================
+# TERRAFORM CI WORKFLOW - Production (PR -> main)
+# ============================================================================
+# Purpose: Validate Terraform code before it reaches main/prod.
+# - terraform fmt/validate/plan (prod env)
+# - Trivy IaC scan
+# Authentication: GitHub OIDC -> AWS role (no long-lived AWS keys)
+# ============================================================================
+
+name: Infra Terraform CI (Prod)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - infra/terraform/**
+      - .github/workflows/infra-terraform-ci-prod.yml
+
+concurrency:
+  group: ci-infra-terraform-prod-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    env:
+      TF_PLUGIN_CACHE_DIR: .terraform-plugin-cache
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache terraform plugins & .terraform
+        uses: actions/cache@v4
+        with:
+          path: |
+            infra/terraform/.terraform-plugin-cache
+            infra/terraform/.terraform
+          key: ${{ runner.os }}-terraform-${{ hashFiles('infra/terraform/**/*.tf','infra/terraform/**/*.tfvars','infra/terraform/**/versions.tf') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Create Terraform plugin cache dir
+        run: mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+
+      - name: Terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init+validate (prod)
+        run: |
+          terraform -chdir=envs/prod init -backend=false
+          terraform -chdir=envs/prod validate
+
+      - name: Terraform plan (prod) -> save binary plan
+        run: |
+          terraform -chdir=envs/prod plan -input=false -no-color -out=plan.tfplan
+          terraform -chdir=envs/prod show -no-color plan.tfplan > plan.txt
+          terraform -chdir=envs/prod show -json plan.tfplan > plan.json
+
+      - name: Upload Terraform plan artifact (prod)
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-prod
+          path: |
+            infra/terraform/envs/prod/plan.tfplan
+            infra/terraform/envs/prod/plan.txt
+            infra/terraform/envs/prod/plan.json
+
+      - name: Trivy IaC scan (Terraform)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'config'
+          scan-ref: 'infra/terraform'
+          # NOTE: keep skip-files single-line to avoid action shell parsing issues.
+          skip-files: '**/plan.tfplan,**/plan.txt,**/plan.json'
+          hide-progress: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'

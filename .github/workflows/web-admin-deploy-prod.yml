@@ -1,0 +1,66 @@
+name: Web-Admin Deploy (Prod)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web-admin/**
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: web-admin-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy web-admin to S3 (Prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: prod
+
+    defaults:
+      run:
+        working-directory: apps/web-admin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          # Public config only (embedded into JS bundle)
+          VITE_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist s3://${{ vars.S3_BUCKET_WEB_ADMIN }} --delete
+
+      - name: Invalidate CloudFront cache
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID_WEB_ADMIN }} \
+            --paths "/*"

@@ -52,6 +52,29 @@ output "private_subnet_ids" {
 }
 
 # ----------------------------------------------------------------------------
+# PRIVATE APP SUBNET IDS (LIST)
+# ----------------------------------------------------------------------------
+# Backward-compatible alias for the module's historical "private" subnet tier.
+output "private_app_subnet_ids" {
+  description = "List of private app subnet IDs (alias of private_subnet_ids for backward compatibility)"
+  value = compact([
+    aws_subnet.private.id,
+    try(aws_subnet.private_secondary[0].id, null)
+  ])
+}
+
+# ----------------------------------------------------------------------------
+# PRIVATE DB SUBNET IDS (LIST) - OPTIONAL
+# ----------------------------------------------------------------------------
+output "private_db_subnet_ids" {
+  description = "List of private DB subnet IDs (empty when not configured)"
+  value = compact([
+    try(aws_subnet.private_db[0].id, null),
+    try(aws_subnet.private_db_secondary[0].id, null)
+  ])
+}
+
+# ----------------------------------------------------------------------------
 # INTERNET GATEWAY ID
 # ----------------------------------------------------------------------------
 output "internet_gateway_id" {
