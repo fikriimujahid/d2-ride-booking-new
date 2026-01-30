@@ -23,7 +23,7 @@ module "rds" {
   backup_retention_period             = var.rds_backup_retention_days
 
   # PROD safety:
-  deletion_protection = true
+  deletion_protection = false
   skip_final_snapshot = false
 
   allowed_security_group_ids = [module.security_groups.backend_api_security_group_id]
