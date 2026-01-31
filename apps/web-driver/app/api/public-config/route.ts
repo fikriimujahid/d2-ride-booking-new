@@ -4,10 +4,14 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export function GET() {
+  // IMPORTANT (Next.js): Avoid build-time env inlining in server bundles by using
+  // bracket access. This endpoint must reflect runtime env (SSM/PM2) changes.
   const userPoolId = (
-    process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? process.env.COGNITO_USER_POOL_ID ?? ''
+    process.env['NEXT_PUBLIC_COGNITO_USER_POOL_ID'] ?? process.env['COGNITO_USER_POOL_ID'] ?? ''
   ).trim();
-  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? '').trim();
+  const clientId = (
+    process.env['NEXT_PUBLIC_COGNITO_CLIENT_ID'] ?? process.env['COGNITO_CLIENT_ID'] ?? ''
+  ).trim();
 
   if (!userPoolId || !clientId) {
     return NextResponse.json(
