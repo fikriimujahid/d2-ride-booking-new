@@ -2,7 +2,7 @@
  * Driver app runs on EC2 (Next.js server), but auth happens client-side.
  * We keep token storage short-lived via sessionStorage.
  */
-export function getSessionStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+export function getSessionStorage(): Storage {
   if (typeof window === 'undefined') {
     const mem = new Map<string, string>();
     return {
@@ -12,13 +12,19 @@ export function getSessionStorage(): Pick<Storage, 'getItem' | 'setItem' | 'remo
       },
       removeItem: (k) => {
         mem.delete(k);
+      },
+      clear: () => {
+        mem.clear();
+      },
+      key: (index) => {
+        const keys = Array.from(mem.keys());
+        return keys[index] ?? null;
+      },
+      get length() {
+        return mem.size;
       }
     };
   }
 
-  return {
-    getItem: (k) => window.sessionStorage.getItem(k),
-    setItem: (k, v) => window.sessionStorage.setItem(k, v),
-    removeItem: (k) => window.sessionStorage.removeItem(k)
-  };
+  return window.sessionStorage;
 }

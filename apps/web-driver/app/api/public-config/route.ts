@@ -1,0 +1,36 @@
+import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export function GET() {
+  const userPoolId = (process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '').trim();
+  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '').trim();
+
+  if (!userPoolId || !clientId) {
+    return NextResponse.json(
+      {
+        error: 'Missing Cognito configuration. Set NEXT_PUBLIC_COGNITO_USER_POOL_ID and NEXT_PUBLIC_COGNITO_CLIENT_ID.'
+      },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0'
+        }
+      }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      userPoolId,
+      clientId
+    },
+    {
+      headers: {
+        // Avoid stale config if env changes and the service restarts.
+        'Cache-Control': 'no-store, max-age=0'
+      }
+    }
+  );
+}
