@@ -58,7 +58,6 @@ let configSingleton: CognitoConfig | null = null;
 let configPromise: Promise<CognitoConfig> | null = null;
 
 async function loadCognitoConfig(): Promise<CognitoConfig> {
-  if (configSingleton) return configSingleton;
   if (configPromise) return configPromise;
 
   configPromise = (async () => {
@@ -80,7 +79,6 @@ async function loadCognitoConfig(): Promise<CognitoConfig> {
     };
 
     validateCognitoConfig(config);
-    configSingleton = config;
     return config;
   })();
 

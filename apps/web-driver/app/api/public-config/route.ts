@@ -4,13 +4,16 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export function GET() {
-  const userPoolId = (process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '').trim();
-  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '').trim();
+  const userPoolId = (
+    process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? process.env.COGNITO_USER_POOL_ID ?? ''
+  ).trim();
+  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? '').trim();
 
   if (!userPoolId || !clientId) {
     return NextResponse.json(
       {
-        error: 'Missing Cognito configuration. Set NEXT_PUBLIC_COGNITO_USER_POOL_ID and NEXT_PUBLIC_COGNITO_CLIENT_ID.'
+        error:
+          'Missing Cognito configuration. Set NEXT_PUBLIC_COGNITO_USER_POOL_ID/NEXT_PUBLIC_COGNITO_CLIENT_ID (or COGNITO_USER_POOL_ID/COGNITO_CLIENT_ID).'
       },
       {
         status: 500,
