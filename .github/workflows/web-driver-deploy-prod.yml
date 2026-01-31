@@ -117,6 +117,7 @@ jobs:
             s3://${{ vars.S3_BUCKET_ARTIFACT }}/apps/frontend/web-driver-$RELEASE_ID.sha256
 
       - name: Deploy to ASG using SSM (rolling, no SSH)
+        working-directory: .
         run: |
           export AWS_REGION="${{ vars.AWS_REGION }}"
           export S3_BUCKET_ARTIFACT="${{ vars.S3_BUCKET_ARTIFACT }}"
