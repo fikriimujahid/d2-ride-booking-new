@@ -19,11 +19,13 @@ module.exports = {
       name: 'web-driver',
       cwd: __dirname,
       script: 'npm',
-      args: 'start',
+      // Explicitly bind on all interfaces so the ALB can reach the service.
+      // (In some Next.js versions/environments, default hostname can effectively behave like localhost.)
+      args: 'start -- -H 0.0.0.0 -p 3001',
       env: {
         // Next.js requires a production build for `next start`.
         NODE_ENV: 'production',
-        // Port 3001 for consolidated instance (backend-api uses 3000)
+        // Port is also set via args; keep for clarity/compat.
         PORT: '3001',
       },
     },
