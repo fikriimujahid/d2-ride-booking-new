@@ -157,14 +157,36 @@ echo "SSM CommandId=$COMMAND_ID"
 
 STATUS="InProgress"
 for i in $(seq 1 120); do
-  STATUSES=$(aws ssm list-command-invocations \
+  INVOCATIONS_JSON=$(aws ssm list-command-invocations \
     --region "$AWS_REGION" \
     --command-id "$COMMAND_ID" \
     --details \
-    --query 'CommandInvocations[].Status' \
-    --output text || echo "Unknown")
+    --output json 2>/dev/null || echo '{"CommandInvocations": []}')
 
-  echo "SSM Statuses=$STATUSES (attempt $i/120)"
+  PARSED=$(python3 - <<'PY'
+import json
+import sys
+
+data = json.loads(sys.stdin.read() or '{"CommandInvocations": []}')
+inv = data.get('CommandInvocations', []) or []
+statuses = [x.get('Status', '') for x in inv if x.get('Status')]
+print(f"{len(inv)}\t{' '.join(statuses)}")
+PY
+<<< "$INVOCATIONS_JSON")
+
+INVOCATION_COUNT="${PARSED%%$'\t'*}"
+STATUSES="${PARSED#*$'\t'}"
+
+echo "SSM TargetsMatched=${INVOCATION_COUNT} Statuses=${STATUSES} (attempt $i/120)"
+
+if [ "$INVOCATION_COUNT" = "0" ]; then
+  # When no managed instances match the tag targets, AWS may still return a CommandId,
+  # but list-command-invocations remains empty and polling would hang.
+  if [ "$i" -ge 3 ]; then
+    STATUS="NoTargets"
+    break
+  fi
+fi
 
   if echo "$STATUSES" | grep -Eq '(Failed|Cancelled|TimedOut)'; then
     STATUS="Failed"
@@ -184,6 +206,13 @@ aws ssm list-command-invocations \
   --command-id "$COMMAND_ID" \
   --details \
   --output json
+
+if [ "$STATUS" = "NoTargets" ]; then
+  echo "[deploy] deployment failed: no instances matched SSM tag targets" >&2
+  echo "[deploy] targets: tag:Environment=${ENVIRONMENT}, tag:${SSM_TAG_KEY_SERVICE}=${SERVICE_NAME}, tag:ManagedBy=terraform" >&2
+  echo "[deploy] check: instance tags, ASG running, and SSM agent/instance profile registration" >&2
+  exit 1
+fi
 
 if [ "$STATUS" != "Success" ]; then
   echo "[deploy] deployment failed (status=$STATUS)" >&2

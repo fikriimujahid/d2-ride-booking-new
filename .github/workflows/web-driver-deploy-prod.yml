@@ -124,4 +124,4 @@ jobs:
           export ENVIRONMENT="prod"
           export PROJECT_NAME="d2-ride-booking"
 
-          bash ../../infra/scripts/deploy-web-driver-prod.sh
+          bash infra/scripts/deploy-web-driver-prod.sh
