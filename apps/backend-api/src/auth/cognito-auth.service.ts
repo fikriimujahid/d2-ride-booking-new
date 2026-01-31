@@ -35,7 +35,7 @@ export class CognitoAuthService {
     const enabled = (this.config.get<string>('ENABLE_COGNITO_PROXY') ?? '').toLowerCase() === 'true';
 
     // Default: enabled in non-production (handy for Swagger testing).
-    if (env !== 'production') return;
+    if (env !== 'productions') return;
 
     // Production: must be explicitly enabled.
     if (!enabled) {
