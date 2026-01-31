@@ -10,7 +10,21 @@ set -euo pipefail
 # - Keeps previous releases on disk for fast rollback (re-run with older RELEASE_ID)
 # ==============================================================================
 
-: "${AWS_REGION:?Set AWS_REGION}"
+# Region handling: prefer explicit env, then AWS CLI default config.
+# GitHub Actions typically sets AWS_REGION/AWS_DEFAULT_REGION, but local runs may not.
+AWS_REGION="${AWS_REGION-}"
+if [ -z "${AWS_REGION}" ]; then
+  AWS_REGION="${AWS_DEFAULT_REGION-}"
+fi
+if [ -z "${AWS_REGION}" ]; then
+  if [ -n "${AWS_PROFILE-}" ]; then
+    AWS_REGION="$(aws configure get region --profile "${AWS_PROFILE}" 2>/dev/null || true)"
+  else
+    AWS_REGION="$(aws configure get region 2>/dev/null || true)"
+  fi
+fi
+
+: "${AWS_REGION:?Set AWS_REGION (or configure a default region for AWS CLI)}"
 : "${S3_BUCKET_ARTIFACT:?Set S3_BUCKET_ARTIFACT}"
 : "${RELEASE_ID:?Set RELEASE_ID (e.g. 20260128-120000)}"
 : "${ENVIRONMENT:?Set ENVIRONMENT (e.g. prod)}"
