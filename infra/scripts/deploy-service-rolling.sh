@@ -133,9 +133,13 @@ commands += [
 
   # Generate env export file from SSM
   "ENV_EXPORT_FILE=$(mktemp /tmp/${SERVICE_NAME}-env.XXXXXX)",
+  "ENV_PERSIST_FILE=\"${APP_DIR}/shared/env.sh\"",
   "python3 - <<'PYY' > \"$ENV_EXPORT_FILE\"\nimport json, os, shlex, subprocess\npath=os.environ['PARAM_PATH']\nout=subprocess.check_output(['aws','ssm','get-parameters-by-path','--path',path,'--with-decryption','--recursive','--output','json'])\ndata=json.loads(out)\nparams=data.get('Parameters',[])\nif not params:\n    raise SystemExit(f'No SSM parameters found under {path}')\nfor p in params:\n    key=p['Name'].split('/')[-1]\n    val=p.get('Value','')\n    print(f'export {key}={shlex.quote(val)}')\nPYY",
   "chmod 0600 \"$ENV_EXPORT_FILE\"",
   "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
+
+  # Persist for PM2-managed processes (so restarts always pick up the same runtime config)
+  "install -m 0600 -o appuser -g appuser \"$ENV_EXPORT_FILE\" \"$ENV_PERSIST_FILE\"",
 
   # Start/restart via PM2
   "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" PM2_LOG_DIR=\"${APP_DIR}/shared/logs\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 delete \"$PM2_APP_NAME\" >/dev/null 2>&1 || true; pm2 start ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env --env production; pm2 save; pm2 describe \"$PM2_APP_NAME\" | head -n 120'",
@@ -145,6 +149,9 @@ commands += [
   # Health check
   "PORT=$(python3 -c \"import os; print(os.getenv('PORT','3000'))\")",
   "for i in $(seq 1 30); do if curl -fsS http://127.0.0.1:${PORT}/health >/dev/null; then echo '[deploy] health ok'; break; fi; echo '[deploy] waiting for health...'; sleep 2; done",
+
+  # Service-specific sanity check: ensure public-config matches runtime env
+  "if [ \"${SERVICE_NAME}\" = \"web-driver\" ]; then EXPECT_POOL=\"${NEXT_PUBLIC_COGNITO_USER_POOL_ID-}\"; EXPECT_CLIENT=\"${NEXT_PUBLIC_COGNITO_CLIENT_ID-}\"; echo \"[deploy] expect userPoolId=$EXPECT_POOL clientId=$EXPECT_CLIENT\"; ACTUAL=$(curl -fsS http://127.0.0.1:${PORT}/api/public-config || true); echo \"[deploy] /api/public-config: $ACTUAL\"; echo \"$ACTUAL\" | grep -q "\"userPoolId\":\"$EXPECT_POOL\""; echo \"$ACTUAL\" | grep -q "\"clientId\":\"$EXPECT_CLIENT\""; fi",
 
   # Keep last 3 releases
   "cd ${APP_DIR}/releases && ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
