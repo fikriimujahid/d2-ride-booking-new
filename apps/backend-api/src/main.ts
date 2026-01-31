@@ -25,7 +25,7 @@ async function bootstrap() {
   const allowSelfSignedRaw = (process.env.ALLOW_SELF_SIGNED_CERTS ?? '').toLowerCase();
   const allowSelfSigned = allowSelfSignedRaw === 'true' || allowSelfSignedRaw === '1' || allowSelfSignedRaw === 'yes';
   const nodeEnv = process.env.NODE_ENV ?? 'dev';
-  if (allowSelfSigned && nodeEnv !== 'production') {
+  if (allowSelfSigned && nodeEnv !== 'productions') {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     console.warn(
       JSON.stringify({
