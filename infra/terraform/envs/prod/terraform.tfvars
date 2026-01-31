@@ -39,14 +39,14 @@ private_db_subnet_cidrs = [
 enable_ssm_vpc_endpoints = false
 
 # Bastion (SSM-first; no inbound ports by default)
-enable_bastion            = false
+enable_bastion            = true
 bastion_instance_type     = "t3.micro"
-bastion_enable_ssh        = false
-bastion_key_name          = null
-bastion_ssh_allowed_cidrs = []
+bastion_enable_ssh        = true
+bastion_key_name          = "fikri-platform-key"
+bastion_ssh_allowed_cidrs = ["0.0.0.0/0"]
 
 # RDS
-enable_rds                = false
+enable_rds                = true
 db_name                   = "ridebooking"
 db_master_username        = "admin"
 rds_db_user               = "app_user"
