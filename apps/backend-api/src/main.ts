@@ -146,7 +146,7 @@ async function bootstrap() {
   }
 
   // Swagger API documentation (enabled in dev, disable in production)
-  if (env !== 'production') {
+  if (env !== 'productions') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('D2 Ride Booking API')
       .setDescription(
