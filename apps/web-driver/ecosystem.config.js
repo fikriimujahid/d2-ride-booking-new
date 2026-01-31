@@ -18,13 +18,17 @@ module.exports = {
     {
       name: 'web-driver',
       cwd: __dirname,
-      script: 'npm',
-      args: 'start',
+      // Run through bash so we can source runtime env vars (SSM-derived) before starting Next.
+      // This avoids relying on PM2 daemon env inheritance.
+      script: 'bash',
+      args: "-lc 'set -euo pipefail; ENV_FILE=\"${APP_DIR:-/opt/apps/web-driver}/shared/env.sh\"; if [ -f \"$ENV_FILE\" ]; then source \"$ENV_FILE\"; fi; npm start -- -H 0.0.0.0 -p 3001'",
       env: {
         // Next.js requires a production build for `next start`.
         NODE_ENV: 'production',
-        // Port 3001 for consolidated instance (backend-api uses 3000)
+        // Port is also set via args; keep for clarity/compat.
         PORT: '3001',
+        // Used by the bash wrapper to find shared env file.
+        APP_DIR: process.env.APP_DIR || '/opt/apps/web-driver',
       },
     },
   ],

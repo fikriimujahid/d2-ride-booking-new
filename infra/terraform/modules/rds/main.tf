@@ -32,6 +32,25 @@ resource "random_password" "rds_master_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
+resource "random_id" "final_snapshot_suffix" {
+  # Stable per-deployment suffix for final snapshot names.
+  byte_length = 4
+}
+
+locals {
+  # RDS final snapshot identifiers must start with a letter and can contain only
+  # letters, numbers, and hyphens. We also avoid underscores by normalizing.
+  snapshot_project_raw = join("-", regexall("[a-z0-9]+", lower(var.project_name)))
+  snapshot_env_raw     = join("-", regexall("[a-z0-9]+", lower(var.environment)))
+
+  snapshot_project = local.snapshot_project_raw != "" ? local.snapshot_project_raw : "project"
+  snapshot_env     = local.snapshot_env_raw != "" ? local.snapshot_env_raw : "env"
+
+  generated_final_snapshot_identifier = "tf-${local.snapshot_project}-${local.snapshot_env}-final-${random_id.final_snapshot_suffix.hex}"
+
+  effective_final_snapshot_identifier = var.skip_final_snapshot ? null : coalesce(var.final_snapshot_identifier, local.generated_final_snapshot_identifier)
+}
+
 # ================================================================================
 # SECTION 2: SECRETS MANAGER - SECURE PASSWORD STORAGE
 # ================================================================================
@@ -227,6 +246,9 @@ resource "aws_db_instance" "main" {
 
   # skip_final_snapshot = true means "Don't create a backup on deletion"
   skip_final_snapshot = var.skip_final_snapshot
+
+  # When skip_final_snapshot is false, AWS requires final_snapshot_identifier.
+  final_snapshot_identifier = local.effective_final_snapshot_identifier
 
   # enabled_cloudwatch_logs_exports sends database logs to CloudWatch
   # [error, general, slowquery] means send three types of logs:

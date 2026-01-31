@@ -24,48 +24,100 @@ type IdTokenClaims = {
 
 type AccessTokenClaims = { exp: number };
 
-export function getCognitoConfig() {
-  // IMPORTANT (Next.js): env var access must be static for client-side inlining.
-  // `process.env[name]` will be undefined in the browser bundle.
-  const userPoolId = (process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '').trim();
-  const clientId = (process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? '').trim();
+type CognitoConfig = {
+  userPoolId: string;
+  clientId: string;
+};
+
+function validateCognitoConfig(config: CognitoConfig) {
+  const userPoolId = config.userPoolId.trim();
+  const clientId = config.clientId.trim();
 
   if (!userPoolId) {
-    throw new Error('Missing NEXT_PUBLIC_COGNITO_USER_POOL_ID. See .env.example.');
+    throw new Error('Missing Cognito userPoolId. See .env.example.');
   }
   if (!clientId) {
-    throw new Error('Missing NEXT_PUBLIC_COGNITO_CLIENT_ID. See .env.example.');
+    throw new Error('Missing Cognito clientId. See .env.example.');
   }
 
   // The Cognito SDK will throw a generic "Invalid UserPoolId format." later.
   // Validate here so misconfigured deployments fail with a useful message.
   if (userPoolId.includes('arn:') || userPoolId.includes('userpool/')) {
     throw new Error(
-      'Invalid NEXT_PUBLIC_COGNITO_USER_POOL_ID: expected the raw pool id like "ap-southeast-1_XXXXXXXXX" (not an ARN).'
+      'Invalid Cognito userPoolId: expected the raw pool id like "ap-southeast-1_XXXXXXXXX" (not an ARN).'
     );
   }
   if (userPoolId.length > 55 || !/^[\w-]+_[0-9a-zA-Z]+$/.test(userPoolId)) {
     throw new Error(
-      'Invalid NEXT_PUBLIC_COGNITO_USER_POOL_ID format: expected "<region>_<id>" like "ap-southeast-1_XXXXXXXXX".'
+      'Invalid Cognito userPoolId format: expected "<region>_<id>" like "ap-southeast-1_XXXXXXXXX".'
     );
   }
-  return {
-    userPoolId,
-    clientId
-  };
+}
+
+let configSingleton: CognitoConfig | null = null;
+let configPromise: Promise<CognitoConfig> | null = null;
+
+async function loadCognitoConfig(): Promise<CognitoConfig> {
+  if (configPromise) return configPromise;
+
+  configPromise = (async () => {
+    // Runtime config fetch prevents stale compile-time inlining of NEXT_PUBLIC_*.
+    // This endpoint is served by the same Next.js app.
+    const res = await fetch('/api/public-config', { cache: 'no-store' });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(
+        `Failed to load Cognito config from /api/public-config (${res.status}). ${text}`.trim()
+      );
+    }
+
+    const data = (await res.json().catch(() => null)) as null | Partial<CognitoConfig>;
+    const config: CognitoConfig = {
+      userPoolId: (data?.userPoolId ?? '').trim(),
+      clientId: (data?.clientId ?? '').trim()
+    };
+
+    validateCognitoConfig(config);
+    return config;
+  })();
+
+  try {
+    return await configPromise;
+  } finally {
+    configPromise = null;
+  }
 }
 
 let poolSingleton: CognitoUserPool | null = null;
+let poolConfigKey: string | null = null;
 
-function getUserPool() {
-  if (poolSingleton) return poolSingleton;
-  const { userPoolId, clientId } = getCognitoConfig();
+function clearCognitoIdentitySessionStorage() {
+  // Cognito Identity JS stores tokens under keys like:
+  // CognitoIdentityServiceProvider.<clientId>.<username>.*
+  const storage = getSessionStorage();
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (!key) continue;
+    if (key.startsWith('CognitoIdentityServiceProvider.')) keysToRemove.push(key);
+  }
+  for (const key of keysToRemove) storage.removeItem(key);
+}
 
+async function getUserPool() {
+  const { userPoolId, clientId } = await loadCognitoConfig();
+  const nextKey = `${userPoolId}:${clientId}`;
+
+  if (poolSingleton && poolConfigKey === nextKey) return poolSingleton;
+
+  // Config changed (or first init). Reset so we don't hold onto a stale pool.
   poolSingleton = new CognitoUserPool({
     UserPoolId: userPoolId,
     ClientId: clientId,
     Storage: getSessionStorage() as any
   });
+  poolConfigKey = nextKey;
 
   return poolSingleton;
 }
@@ -93,7 +145,7 @@ function mapSession(session: CognitoUserSession): { tokens: AuthTokens; user: Au
 }
 
 export async function signIn(username: string, password: string) {
-  const pool = getUserPool();
+  const pool = await getUserPool();
 
   const user = new CognitoUser({
     Username: username,
@@ -115,7 +167,7 @@ export async function signIn(username: string, password: string) {
 }
 
 export async function getCurrentSession() {
-  const pool = getUserPool();
+  const pool = await getUserPool();
   const current = pool.getCurrentUser();
   if (!current) return null;
 
@@ -130,6 +182,7 @@ export async function getCurrentSession() {
 }
 
 export function signOut() {
-  const pool = getUserPool();
-  pool.getCurrentUser()?.signOut();
+  // Keep signOut safe even if config hasn't loaded yet.
+  poolSingleton?.getCurrentUser()?.signOut();
+  clearCognitoIdentitySessionStorage();
 }

@@ -38,6 +38,21 @@ APP_PORT="${app_port}"
 
 echo "[user-data] environment=$ENVIRONMENT service=$SERVICE_NAME app_port=$APP_PORT"
 
+# SSM first (no SSH): ensure the instance registers even if later steps fail.
+# Amazon Linux 2023 AMIs may not include the agent by default, so install it if needed.
+if ! systemctl list-unit-files --type=service | grep -q '^amazon-ssm-agent\.service'; then
+  echo "[user-data] amazon-ssm-agent.service not found; installing amazon-ssm-agent"
+  retry 6 10 dnf -y install amazon-ssm-agent
+fi
+
+systemctl enable --now amazon-ssm-agent
+if ! systemctl is-active --quiet amazon-ssm-agent; then
+  echo "[user-data] ERROR: amazon-ssm-agent failed to start" >&2
+  systemctl status amazon-ssm-agent --no-pager || true
+  journalctl -u amazon-ssm-agent --no-pager -n 200 || true
+  exit 1
+fi
+
 # OS packages (keep minimal)
 retry 3 5 dnf -y install ca-certificates curl-minimal tar gzip python3
 
@@ -74,10 +89,6 @@ APP_DIR="/opt/apps/$${SERVICE_NAME}"
 mkdir -p "$${APP_DIR}/releases" "$${APP_DIR}/shared" "$${APP_DIR}/shared/logs" "/var/log/app/$${SERVICE_NAME}"
 chown -R appuser:appuser /opt/apps /var/log/app
 chmod 0755 /opt/apps "$${APP_DIR}" || true
-
-# SSM only (no SSH)
-systemctl enable --now amazon-ssm-agent
-systemctl is-active --quiet amazon-ssm-agent
 
 # PM2 systemd integration (no app start)
 if [ ! -f /etc/systemd/system/pm2-appuser.service ]; then

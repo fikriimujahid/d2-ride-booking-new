@@ -33,7 +33,7 @@ module "vpc" {
   az_count        = 2
 
   # NAT enabled only in PROD
-  enable_nat_gateway = false
+  enable_nat_gateway = true
 
   tags = merge(var.tags, {
     Project     = var.project_name

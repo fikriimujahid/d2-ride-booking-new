@@ -10,7 +10,21 @@ set -euo pipefail
 # - Keeps previous releases on disk for fast rollback (re-run with older RELEASE_ID)
 # ==============================================================================
 
-: "${AWS_REGION:?Set AWS_REGION}"
+# Region handling: prefer explicit env, then AWS CLI default config.
+# GitHub Actions typically sets AWS_REGION/AWS_DEFAULT_REGION, but local runs may not.
+AWS_REGION="${AWS_REGION-}"
+if [ -z "${AWS_REGION}" ]; then
+  AWS_REGION="${AWS_DEFAULT_REGION-}"
+fi
+if [ -z "${AWS_REGION}" ]; then
+  if [ -n "${AWS_PROFILE-}" ]; then
+    AWS_REGION="$(aws configure get region --profile "${AWS_PROFILE}" 2>/dev/null || true)"
+  else
+    AWS_REGION="$(aws configure get region 2>/dev/null || true)"
+  fi
+fi
+
+: "${AWS_REGION:?Set AWS_REGION (or configure a default region for AWS CLI)}"
 : "${S3_BUCKET_ARTIFACT:?Set S3_BUCKET_ARTIFACT}"
 : "${RELEASE_ID:?Set RELEASE_ID (e.g. 20260128-120000)}"
 : "${ENVIRONMENT:?Set ENVIRONMENT (e.g. prod)}"
@@ -25,10 +39,10 @@ ROLLING_MAX_CONCURRENCY="${ROLLING_MAX_CONCURRENCY:-1}"
 
 SSM_TAG_KEY_SERVICE="${SSM_TAG_KEY_SERVICE:-Service}"
 
-APP_DIR="/opt/apps/${SERVICE_NAME}"
-S3_KEY_TGZ="${ARTIFACT_NAMESPACE}/${SERVICE_NAME}-${RELEASE_ID}.tar.gz"
-S3_KEY_SHA="${ARTIFACT_NAMESPACE}/${SERVICE_NAME}-${RELEASE_ID}.sha256"
-PARAM_PATH="/${ENVIRONMENT}/${PROJECT_NAME}/${SERVICE_NAME}"
+export APP_DIR="/opt/apps/${SERVICE_NAME}"
+export S3_KEY_TGZ="${ARTIFACT_NAMESPACE}/${SERVICE_NAME}-${RELEASE_ID}.tar.gz"
+export S3_KEY_SHA="${ARTIFACT_NAMESPACE}/${SERVICE_NAME}-${RELEASE_ID}.sha256"
+export PARAM_PATH="/${ENVIRONMENT}/${PROJECT_NAME}/${SERVICE_NAME}"
 
 echo "[deploy] env=${ENVIRONMENT} service=${SERVICE_NAME} release=${RELEASE_ID}"
 echo "[deploy] s3=s3://${S3_BUCKET_ARTIFACT}/${S3_KEY_TGZ}"
@@ -112,14 +126,20 @@ if NEEDS_RDS_CA:
 
 commands += [
   # Atomic switch
-  f"ln -sfn {release_dir} ${APP_DIR}/current",
-  f"chown -h appuser:appuser ${APP_DIR}/current || true",
+  # NOTE: avoid ${APP_DIR} here because this is a Python f-string; ${APP_DIR}
+  # would be interpreted as f-string formatting and turn into $/opt/apps/...
+  f"ln -sfn {release_dir} $APP_DIR/current",
+  "chown -h appuser:appuser $APP_DIR/current || true",
 
   # Generate env export file from SSM
   "ENV_EXPORT_FILE=$(mktemp /tmp/${SERVICE_NAME}-env.XXXXXX)",
+  "ENV_PERSIST_FILE=\"${APP_DIR}/shared/env.sh\"",
   "python3 - <<'PYY' > \"$ENV_EXPORT_FILE\"\nimport json, os, shlex, subprocess\npath=os.environ['PARAM_PATH']\nout=subprocess.check_output(['aws','ssm','get-parameters-by-path','--path',path,'--with-decryption','--recursive','--output','json'])\ndata=json.loads(out)\nparams=data.get('Parameters',[])\nif not params:\n    raise SystemExit(f'No SSM parameters found under {path}')\nfor p in params:\n    key=p['Name'].split('/')[-1]\n    val=p.get('Value','')\n    print(f'export {key}={shlex.quote(val)}')\nPYY",
   "chmod 0600 \"$ENV_EXPORT_FILE\"",
   "chown appuser:appuser \"$ENV_EXPORT_FILE\"",
+
+  # Persist for PM2-managed processes (so restarts always pick up the same runtime config)
+  "install -m 0600 -o appuser -g appuser \"$ENV_EXPORT_FILE\" \"$ENV_PERSIST_FILE\"",
 
   # Start/restart via PM2
   "runuser -u appuser -- env APP_DIR=\"${APP_DIR}\" PM2_APP_NAME=\"${PM2_APP_NAME}\" PM2_LOG_DIR=\"${APP_DIR}/shared/logs\" bash -lc 'set -euo pipefail; export HOME=/home/appuser; export PM2_HOME=/home/appuser/.pm2; cd \"$APP_DIR/current\"; source \"'$ENV_EXPORT_FILE'\"; pm2 delete \"$PM2_APP_NAME\" >/dev/null 2>&1 || true; pm2 start ecosystem.config.js --only \"$PM2_APP_NAME\" --update-env --env production; pm2 save; pm2 describe \"$PM2_APP_NAME\" | head -n 120'",
@@ -139,14 +159,36 @@ commands += [
 print(json.dumps({"commands": commands}))
 PY
 
+# IMPORTANT: SSM send-command `--targets` entries are ORed across different keys.
+# To avoid accidentally deploying to other services, resolve the exact instance IDs
+# using EC2 tag filters (AND semantics), then deploy via `--instance-ids`.
+INSTANCE_IDS_RAW=$(aws ec2 describe-instances \
+  --region "$AWS_REGION" \
+  --filters \
+    "Name=instance-state-name,Values=running" \
+    "Name=tag:Environment,Values=${ENVIRONMENT}" \
+    "Name=tag:${SSM_TAG_KEY_SERVICE},Values=${SERVICE_NAME}" \
+    "Name=tag:ManagedBy,Values=terraform" \
+  --query 'Reservations[].Instances[].InstanceId' \
+  --output text)
+
+# Normalize whitespace and guard against empty results
+INSTANCE_IDS=$(echo "$INSTANCE_IDS_RAW" | tr '\t' ' ' | xargs || true)
+
+if [ -z "$INSTANCE_IDS" ]; then
+  echo "[deploy] deployment failed: no RUNNING EC2 instances matched tag filters" >&2
+  echo "[deploy] filters: tag:Environment=${ENVIRONMENT}, tag:${SSM_TAG_KEY_SERVICE}=${SERVICE_NAME}, tag:ManagedBy=terraform" >&2
+  echo "[deploy] check: ASG desired capacity, instance tags, and instance health" >&2
+  exit 1
+fi
+
+echo "[deploy] instance_ids=${INSTANCE_IDS}"
+
 COMMAND_ID=$(aws ssm send-command \
   --region "$AWS_REGION" \
   --document-name "AWS-RunShellScript" \
   --comment "Deploy ${SERVICE_NAME} ${RELEASE_ID} (${ENVIRONMENT})" \
-  --targets \
-    "Key=tag:Environment,Values=${ENVIRONMENT}" \
-    "Key=tag:${SSM_TAG_KEY_SERVICE},Values=${SERVICE_NAME}" \
-    "Key=tag:ManagedBy,Values=terraform" \
+  --instance-ids $INSTANCE_IDS \
   --max-concurrency "$ROLLING_MAX_CONCURRENCY" \
   --max-errors "0" \
   --parameters file:///tmp/ssm-commands.json \
@@ -157,14 +199,29 @@ echo "SSM CommandId=$COMMAND_ID"
 
 STATUS="InProgress"
 for i in $(seq 1 120); do
-  STATUSES=$(aws ssm list-command-invocations \
+  INVOCATIONS_JSON=$(aws ssm list-command-invocations \
     --region "$AWS_REGION" \
     --command-id "$COMMAND_ID" \
     --details \
-    --query 'CommandInvocations[].Status' \
-    --output text || echo "Unknown")
+    --output json 2>/dev/null || echo '{"CommandInvocations": []}')
 
-  echo "SSM Statuses=$STATUSES (attempt $i/120)"
+  # NOTE: Use python -c + stdin for the JSON payload. Using python heredoc here
+  # would consume stdin for the script itself and always parse as empty.
+  PARSED=$(python3 -c 'import json,sys; data=json.loads(sys.stdin.read() or "{}") or {}; inv=data.get("CommandInvocations") or []; statuses=[x.get("Status", "") for x in inv if x.get("Status")]; print("{}\t{}".format(len(inv), " ".join(statuses)))' <<< "$INVOCATIONS_JSON")
+
+INVOCATION_COUNT="${PARSED%%$'\t'*}"
+STATUSES="${PARSED#*$'\t'}"
+
+echo "SSM Invocations=${INVOCATION_COUNT} Statuses=${STATUSES} (attempt $i/120)"
+
+if [ "$INVOCATION_COUNT" = "0" ]; then
+  # When no instances were targeted/matched, AWS may still return a CommandId,
+  # but list-command-invocations remains empty and polling would hang.
+  if [ "$i" -ge 3 ]; then
+    STATUS="NoTargets"
+    break
+  fi
+fi
 
   if echo "$STATUSES" | grep -Eq '(Failed|Cancelled|TimedOut)'; then
     STATUS="Failed"
@@ -184,6 +241,13 @@ aws ssm list-command-invocations \
   --command-id "$COMMAND_ID" \
   --details \
   --output json
+
+if [ "$STATUS" = "NoTargets" ]; then
+  echo "[deploy] deployment failed: no instances matched SSM tag targets" >&2
+  echo "[deploy] targets: tag:Environment=${ENVIRONMENT}, tag:${SSM_TAG_KEY_SERVICE}=${SERVICE_NAME}, tag:ManagedBy=terraform" >&2
+  echo "[deploy] check: instance tags, ASG running, and SSM agent/instance profile registration" >&2
+  exit 1
+fi
 
 if [ "$STATUS" != "Success" ]; then
   echo "[deploy] deployment failed (status=$STATUS)" >&2

@@ -231,14 +231,12 @@ resource "aws_autoscaling_group" "this" {
 
     # WHAT: Which version of the launch template to use
     # WHY: Launch templates are versioned (v1, v2, v3...)
-    # OPTIONS:
-    #   - "$Latest": Always use newest version (auto-updates)
-    #   - "$Default": Use version marked as default
-    #   - "1", "2", "3": Use specific version (pinned)
-    # "$Latest" BENEFIT: When you update launch template, ASG automatically uses new version
-    # "$Latest" RISK: If new version is broken, ASG launches broken instances
-    # BEST PRACTICE: DEV = $Latest (fast iteration), PROD = specific version (stability)
-    version = "$Latest"
+    # NOTE:
+    # We pin to the launch template's latest_version so Terraform detects changes
+    # and can trigger an instance refresh via the instance_refresh block.
+    # Using "$Latest" here prevents Terraform from seeing a diff when the launch
+    # template changes, which can leave instances stuck on old user_data.
+    version = tostring(aws_launch_template.this.latest_version)
   }
 
   # ================================================================================
