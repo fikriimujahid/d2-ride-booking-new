@@ -151,7 +151,8 @@ commands += [
   "for i in $(seq 1 30); do if curl -fsS http://127.0.0.1:${PORT}/health >/dev/null; then echo '[deploy] health ok'; break; fi; echo '[deploy] waiting for health...'; sleep 2; done",
 
   # Service-specific sanity check: ensure public-config matches runtime env
-  "if [ \"${SERVICE_NAME}\" = \"web-driver\" ]; then EXPECT_POOL=\"${NEXT_PUBLIC_COGNITO_USER_POOL_ID-}\"; EXPECT_CLIENT=\"${NEXT_PUBLIC_COGNITO_CLIENT_ID-}\"; echo \"[deploy] expect userPoolId=$EXPECT_POOL clientId=$EXPECT_CLIENT\"; ACTUAL=$(curl -fsS http://127.0.0.1:${PORT}/api/public-config || true); echo \"[deploy] /api/public-config: $ACTUAL\"; echo \"$ACTUAL\" | grep -q "\"userPoolId\":\"$EXPECT_POOL\""; echo \"$ACTUAL\" | grep -q "\"clientId\":\"$EXPECT_CLIENT\""; fi",
+  # (Implemented via python to avoid brittle shell-quoting / grep JSON matching.)
+  "if [ \"${SERVICE_NAME}\" = \"web-driver\" ]; then python3 -c 'import json,os,urllib.request; port=os.getenv("PORT","3001"); expect_pool=os.getenv("NEXT_PUBLIC_COGNITO_USER_POOL_ID",""); expect_client=os.getenv("NEXT_PUBLIC_COGNITO_CLIENT_ID",""); body=urllib.request.urlopen(f"http://127.0.0.1:{port}/api/public-config").read().decode(); data=json.loads(body); assert data.get("userPoolId")==expect_pool, (data, expect_pool); assert data.get("clientId")==expect_client, (data, expect_client); print("[deploy] public-config ok")'; fi",
 
   # Keep last 3 releases
   "cd ${APP_DIR}/releases && ls -1 | sort -r | tail -n +4 | xargs -r rm -rf || true",
