@@ -93,6 +93,12 @@ variable "skip_final_snapshot" {
   default     = true
 }
 
+variable "final_snapshot_identifier" {
+  description = "Final snapshot identifier to use when deleting the DB instance (required by AWS when skip_final_snapshot=false). If null, this module auto-generates a valid identifier."
+  type        = string
+  default     = null
+}
+
 variable "iam_database_authentication_enabled" {
   description = "Enable IAM database authentication (MUST be true - required for security)"
   type        = bool
