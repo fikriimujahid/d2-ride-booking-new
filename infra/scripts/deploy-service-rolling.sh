@@ -112,8 +112,10 @@ if NEEDS_RDS_CA:
 
 commands += [
   # Atomic switch
-  f"ln -sfn {release_dir} ${APP_DIR}/current",
-  f"chown -h appuser:appuser ${APP_DIR}/current || true",
+  # NOTE: avoid ${APP_DIR} here because this is a Python f-string; ${APP_DIR}
+  # would be interpreted as f-string formatting and turn into $/opt/apps/...
+  f"ln -sfn {release_dir} $APP_DIR/current",
+  "chown -h appuser:appuser $APP_DIR/current || true",
 
   # Generate env export file from SSM
   "ENV_EXPORT_FILE=$(mktemp /tmp/${SERVICE_NAME}-env.XXXXXX)",
@@ -139,14 +141,36 @@ commands += [
 print(json.dumps({"commands": commands}))
 PY
 
+# IMPORTANT: SSM send-command `--targets` entries are ORed across different keys.
+# To avoid accidentally deploying to other services, resolve the exact instance IDs
+# using EC2 tag filters (AND semantics), then deploy via `--instance-ids`.
+INSTANCE_IDS_RAW=$(aws ec2 describe-instances \
+  --region "$AWS_REGION" \
+  --filters \
+    "Name=instance-state-name,Values=running" \
+    "Name=tag:Environment,Values=${ENVIRONMENT}" \
+    "Name=tag:${SSM_TAG_KEY_SERVICE},Values=${SERVICE_NAME}" \
+    "Name=tag:ManagedBy,Values=terraform" \
+  --query 'Reservations[].Instances[].InstanceId' \
+  --output text)
+
+# Normalize whitespace and guard against empty results
+INSTANCE_IDS=$(echo "$INSTANCE_IDS_RAW" | tr '\t' ' ' | xargs || true)
+
+if [ -z "$INSTANCE_IDS" ]; then
+  echo "[deploy] deployment failed: no RUNNING EC2 instances matched tag filters" >&2
+  echo "[deploy] filters: tag:Environment=${ENVIRONMENT}, tag:${SSM_TAG_KEY_SERVICE}=${SERVICE_NAME}, tag:ManagedBy=terraform" >&2
+  echo "[deploy] check: ASG desired capacity, instance tags, and instance health" >&2
+  exit 1
+fi
+
+echo "[deploy] instance_ids=${INSTANCE_IDS}"
+
 COMMAND_ID=$(aws ssm send-command \
   --region "$AWS_REGION" \
   --document-name "AWS-RunShellScript" \
   --comment "Deploy ${SERVICE_NAME} ${RELEASE_ID} (${ENVIRONMENT})" \
-  --targets \
-    "Key=tag:Environment,Values=${ENVIRONMENT}" \
-    "Key=tag:${SSM_TAG_KEY_SERVICE},Values=${SERVICE_NAME}" \
-    "Key=tag:ManagedBy,Values=terraform" \
+  --instance-ids $INSTANCE_IDS \
   --max-concurrency "$ROLLING_MAX_CONCURRENCY" \
   --max-errors "0" \
   --parameters file:///tmp/ssm-commands.json \
@@ -163,24 +187,17 @@ for i in $(seq 1 120); do
     --details \
     --output json 2>/dev/null || echo '{"CommandInvocations": []}')
 
-  PARSED=$(python3 - <<'PY'
-import json
-import sys
-
-data = json.loads(sys.stdin.read() or '{"CommandInvocations": []}')
-inv = data.get('CommandInvocations', []) or []
-statuses = [x.get('Status', '') for x in inv if x.get('Status')]
-print(f"{len(inv)}\t{' '.join(statuses)}")
-PY
-<<< "$INVOCATIONS_JSON")
+  # NOTE: Use python -c + stdin for the JSON payload. Using python heredoc here
+  # would consume stdin for the script itself and always parse as empty.
+  PARSED=$(python3 -c 'import json,sys; data=json.loads(sys.stdin.read() or "{}") or {}; inv=data.get("CommandInvocations") or []; statuses=[x.get("Status", "") for x in inv if x.get("Status")]; print("{}\t{}".format(len(inv), " ".join(statuses)))' <<< "$INVOCATIONS_JSON")
 
 INVOCATION_COUNT="${PARSED%%$'\t'*}"
 STATUSES="${PARSED#*$'\t'}"
 
-echo "SSM TargetsMatched=${INVOCATION_COUNT} Statuses=${STATUSES} (attempt $i/120)"
+echo "SSM Invocations=${INVOCATION_COUNT} Statuses=${STATUSES} (attempt $i/120)"
 
 if [ "$INVOCATION_COUNT" = "0" ]; then
-  # When no managed instances match the tag targets, AWS may still return a CommandId,
+  # When no instances were targeted/matched, AWS may still return a CommandId,
   # but list-command-invocations remains empty and polling would hang.
   if [ "$i" -ge 3 ]; then
     STATUS="NoTargets"

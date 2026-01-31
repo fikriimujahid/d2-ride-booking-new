@@ -109,21 +109,58 @@ resource "aws_vpc_security_group_ingress_rule" "driver_from_alb" {
 resource "aws_vpc_security_group_egress_rule" "backend_https_out" {
   security_group_id            = aws_security_group.backend_api.id
   description                  = "HTTPS outbound for patching/SSM"
-  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? var.vpc_cidr : null
+  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? "0.0.0.0/0" : null
   referenced_security_group_id = var.vpc_endpoints_security_group_id
   from_port                    = 443
   to_port                      = 443
   ip_protocol                  = "tcp"
 }
 
+# DNS is required for SSM and package repos.
+resource "aws_vpc_security_group_egress_rule" "backend_dns_udp_out" {
+  security_group_id = aws_security_group.backend_api.id
+  description       = "DNS (UDP) to VPC resolver"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "udp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "backend_dns_tcp_out" {
+  security_group_id = aws_security_group.backend_api.id
+  description       = "DNS (TCP) to VPC resolver"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "tcp"
+}
+
 resource "aws_vpc_security_group_egress_rule" "driver_https_out" {
   security_group_id            = aws_security_group.driver_web.id
   description                  = "HTTPS outbound for patching/SSM"
-  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? var.vpc_cidr : null
+  cidr_ipv4                    = var.vpc_endpoints_security_group_id == null ? "0.0.0.0/0" : null
   referenced_security_group_id = var.vpc_endpoints_security_group_id
   from_port                    = 443
   to_port                      = 443
   ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "driver_dns_udp_out" {
+  security_group_id = aws_security_group.driver_web.id
+  description       = "DNS (UDP) to VPC resolver"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "udp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "driver_dns_tcp_out" {
+  security_group_id = aws_security_group.driver_web.id
+  description       = "DNS (TCP) to VPC resolver"
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "tcp"
 }
 
 # Egress: allow MySQL within VPC (RDS). Avoid SG-to-SG here to prevent dependency cycles with the RDS module.

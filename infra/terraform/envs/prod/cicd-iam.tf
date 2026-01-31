@@ -36,6 +36,15 @@ data "aws_iam_policy_document" "github_actions_prod_assume" {
 
 data "aws_iam_policy_document" "github_actions_prod_deploy" {
   statement {
+    sid    = "EC2DescribeInstancesForDeploy"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeInstances"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "S3UploadProdArtifacts"
     effect = "Allow"
     actions = [
