@@ -77,15 +77,15 @@ tags = {
 # ================================================================================
 # COST
 # ================================================================================
-enable_ec2_backend       = true
-enable_rds               = true
-enable_nat_gateway       = true
-enable_alb               = true
-enable_ssm_vpc_endpoints = true
+enable_ec2_backend       = false
+enable_rds               = false
+enable_nat_gateway       = false
+enable_alb               = false
+enable_ssm_vpc_endpoints = false
 
-enable_web_admin     = true
-enable_web_passenger = true
-enable_web_driver    = true
+enable_web_admin     = false
+enable_web_passenger = false
+enable_web_driver    = false
 
 driver_instance_type    = "t3.micro"
 driver_root_volume_size = 16
@@ -94,10 +94,10 @@ driver_root_volume_size = 16
 # BASTION (OPTIONAL)
 # ================================================================================
 # Recommended: enable bastion and connect via SSM port forwarding.
-enable_bastion = true
+enable_bastion = false
 
 # Optional SSH (generally not needed if using SSM)
-bastion_enable_ssh        = true
+bastion_enable_ssh        = false
 bastion_ssh_allowed_cidrs = ["125.163.30.66/32", "103.136.58.0/24"] # Replace with your IP address
 
 # Only required if bastion_enable_ssh=true
