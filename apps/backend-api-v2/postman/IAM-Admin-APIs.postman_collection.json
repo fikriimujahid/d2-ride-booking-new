@@ -1,0 +1,434 @@
+{
+  "info": {
+    "name": "D2 Ride Booking - IAM Admin APIs",
+    "description": "Admin IAM CRUD + role/permission assignment endpoints. Requires Cognito JWT with ADMIN system group.\n\n**Authentication Setup:**\n1. Get Cognito JWT token (use AWS Cognito SDK or hosted UI)\n2. Set the `COGNITO_JWT` collection variable to your token\n3. Token must have `cognito:groups` claim including `admin`\n\n**Required Permissions:**\n- Endpoints enforce permission-based RBAC\n- User must have granted permissions via role assignments in DB\n- See endpoint descriptions for required permission keys",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "COGNITO_JWT",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{COGNITO_JWT}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Admin Users",
+      "item": [
+        {
+          "name": "List Admin Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users"]
+            },
+            "description": "Required permission: `admin-user:view`"
+          }
+        },
+        {
+          "name": "Get Admin User by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "04ba01fb-0824-45dd-a3ad-4a79ebdc41ac",
+                  "description": "Admin user UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `admin-user:read`"
+          }
+        },
+        {
+          "name": "Create Admin User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cognitoSub\": \"c9fa952c-1021-70f5-1bf6-fe6347a9bcc1\",\n  \"email\": \"newadmin@example.com\",\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users"]
+            },
+            "description": "Required permission: `admin-user:create`\n\nStatus values: `ACTIVE`, `DISABLED`"
+          }
+        },
+        {
+          "name": "Update Admin User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"updated@example.com\",\n  \"status\": \"DISABLED\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "04ba01fb-0824-45dd-a3ad-4a79ebdc41ac",
+                  "description": "Admin user UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `admin-user:update`"
+          }
+        },
+        {
+          "name": "Delete Admin User (soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "04ba01fb-0824-45dd-a3ad-4a79ebdc41ac",
+                  "description": "Admin user UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `admin-user:delete`\n\nSoft deletes the admin user (sets deletedAt)."
+          }
+        },
+        {
+          "name": "Replace Admin User Roles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleIds\": [\n    \"11111111-1111-1111-1111-111111111111\",\n    \"22222222-2222-2222-2222-222222222222\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/admin-users/:id/roles",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "admin-users", ":id", "roles"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "04ba01fb-0824-45dd-a3ad-4a79ebdc41ac",
+                  "description": "Admin user UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `admin-user:assign-role`\n\nReplaces all existing role assignments (transaction-safe)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Roles",
+      "item": [
+        {
+          "name": "List Roles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles"]
+            },
+            "description": "Required permission: `role:view`"
+          }
+        },
+        {
+          "name": "Get Role by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "33333333-3333-3333-3333-333333333333",
+                  "description": "Role UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `role:read`"
+          }
+        },
+        {
+          "name": "Create Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"OPERATION_MANAGER\",\n  \"description\": \"Can manage operations and view analytics\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles"]
+            },
+            "description": "Required permission: `role:create`"
+          }
+        },
+        {
+          "name": "Update Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ANALYST\",\n  \"description\": \"Can view analytics only\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "33333333-3333-3333-3333-333333333333",
+                  "description": "Role UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `role:update`"
+          }
+        },
+        {
+          "name": "Delete Role (soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "33333333-3333-3333-3333-333333333333",
+                  "description": "Role UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `role:delete`\n\nBlocked if role is assigned to any admin user."
+          }
+        },
+        {
+          "name": "Replace Role Permissions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [\n    \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\",\n    \"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\",\n    \"cccccccc-cccc-cccc-cccc-cccccccccccc\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/roles/:id/permissions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "roles", ":id", "permissions"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "33333333-3333-3333-3333-333333333333",
+                  "description": "Role UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `role:assign-permission`\n\nReplaces all existing permission assignments (transaction-safe)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Permissions",
+      "item": [
+        {
+          "name": "List Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/permissions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "permissions"]
+            },
+            "description": "Required permission: `permission:view`"
+          }
+        },
+        {
+          "name": "Get Permission by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/permissions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "permissions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                  "description": "Permission UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `permission:read`"
+          }
+        },
+        {
+          "name": "Create Permission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"driver:read\",\n  \"description\": \"Read driver data\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/permissions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "permissions"]
+            },
+            "description": "Required permission: `permission:create`\n\nPermission key format: `<module>:<action>` or `*`"
+          }
+        },
+        {
+          "name": "Update Permission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"driver:update\",\n  \"description\": \"Update driver data\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/admin/permissions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "permissions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                  "description": "Permission UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `permission:update`"
+          }
+        },
+        {
+          "name": "Delete Permission (soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/permissions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "permissions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                  "description": "Permission UUID"
+                }
+              ]
+            },
+            "description": "Required permission: `permission:delete`\n\nBlocked if permission is assigned to any role."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access Context",
+      "item": [
+        {
+          "name": "Get Admin Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/me",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "me"]
+            },
+            "description": "Returns admin access context for UI bootstrap.\n\nNo RBAC guard (only requires ADMIN system group).\n\nResponse includes:\n- User info\n- Assigned roles\n- Effective permissions\n- Module/action capability matrix"
+          }
+        }
+      ]
+    }
+  ]
+}

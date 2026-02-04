@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { requestIdMiddleware } from './common/request/request-id.middleware';
@@ -24,6 +25,32 @@ async function bootstrap() {
 
   // Auth-safe error shape.
   app.useGlobalFilters(new HttpErrorFilter());
+
+  const swaggerEnabledRaw = process.env.SWAGGER_ENABLED;
+  const swaggerEnabled = swaggerEnabledRaw ? swaggerEnabledRaw.trim().toLowerCase() !== 'false' : true;
+  if (swaggerEnabled) {
+    const config = new DocumentBuilder()
+      .setTitle('D2 Ride Booking API (v2)')
+      .setDescription('AuthN (Cognito) + System Groups + Admin RBAC')
+      .setVersion('1.0.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          name: 'Authorization',
+          in: 'header'
+        },
+        'bearer'
+      )
+      .build();
+
+    const document = SwaggerModule.createDocument(app, config);
+    document.security = [{ bearer: [] }];
+    SwaggerModule.setup('docs', app, document, {
+      swaggerOptions: { persistAuthorization: true }
+    });
+  }
 
   const portRaw = process.env.PORT;
   const port = portRaw ? Number(portRaw) : 3000;

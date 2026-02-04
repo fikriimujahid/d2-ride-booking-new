@@ -1,4 +1,5 @@
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user';
+import type { PermissionResolution } from '../iam/rbac/permission.types';
 
 declare global {
   namespace Express {
@@ -11,6 +12,9 @@ declare global {
 
       /** Correlation ID generated per request. */
       requestId?: string;
+
+      /** Cached RBAC resolution for this request (Phase B). */
+      rbac?: PermissionResolution;
     }
   }
 }

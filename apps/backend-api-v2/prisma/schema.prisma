@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum AdminUserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model AdminUser {
+  id         String          @id @default(uuid()) @db.VarChar(36)
+  cognitoSub String          @unique @db.VarChar(64)
+  email      String          @db.VarChar(320)
+  status     AdminUserStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  roles             AdminUserRole[]
+  auditLogsAsActor  AdminAuditLog[] @relation("AuditActor")
+
+  @@index([email])
+  @@index([status])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  name        String   @unique @db.VarChar(64)
+  description String?  @db.VarChar(255)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  adminUsers   AdminUserRole[]
+  permissions  RolePermission[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.VarChar(36)
+  key         String  @unique @db.VarChar(128)
+  description String? @db.VarChar(255)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  roles RolePermission[]
+
+  @@index([key])
+}
+
+model AdminUserRole {
+  adminUserId String   @db.VarChar(36)
+  roleId      String   @db.VarChar(36)
+  createdAt   DateTime @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([adminUserId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String   @db.VarChar(36)
+  permissionId String   @db.VarChar(36)
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model AdminAuditLog {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  actorAdminUserId String  @db.VarChar(36)
+
+  action     String @db.VarChar(64)
+  targetType String @db.VarChar(64)
+  targetId   String? @db.VarChar(64)
+
+  before Json?
+  after  Json?
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  requestId String? @db.VarChar(64)
+
+  createdAt DateTime @default(now())
+
+  actor AdminUser @relation("AuditActor", fields: [actorAdminUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorAdminUserId, createdAt])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
+}
