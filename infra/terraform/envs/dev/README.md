@@ -59,7 +59,8 @@ aws ec2 describe-instances `
 
 **Option B: Using Management Script**
 ```powershell
-.\infra\scripts\dev-status.ps1
+# Check if script exists, otherwise use AWS CLI
+Get-ChildItem .\infra\scripts\*status*.ps1
 ```
 
 ### 1.2 Connect via SSM Session Manager
@@ -204,7 +205,7 @@ aws ec2 describe-instances `
 
 # Or use Terraform output
 cd infra\terraform\envs\dev
-terraform output -json | jq -r '.environment_summary.value.bastion.ec2.instance_id'
+terraform output
 ```
 
 **Get RDS Endpoint:**
@@ -217,10 +218,7 @@ aws rds describe-db-instances `
 
 # Or use Terraform output
 cd infra\terraform\envs\dev
-terraform output -json | jq -r '.environment_summary.value.database.rds.address'
-
-# Or use the status script
-.\infra\scripts\dev-status.ps1
+terraform output -json | Select-String -Pattern "rds"
 ```
 
 ### 3.4 Method 1: Direct Port Forwarding to RDS
@@ -725,4 +723,158 @@ pm2 logs backend-api --err --lines 200
 
 ---
 
-**Last Updated:** 2026-01-21
+---
+
+## 6. Cost Management: Enable/Disable Resources
+
+### 6.1 Cost Control via terraform.tfvars
+
+The DEV environment supports cost optimization by enabling/disabling resources:
+
+```hcl
+# Cost toggles in terraform.tfvars
+enable_ec2_backend       = false  # Backend EC2 instance
+enable_rds               = false  # RDS MySQL database
+enable_nat_gateway       = false  # NAT Gateway ($32/month)
+enable_alb               = false  # Application Load Balancer
+enable_ssm_vpc_endpoints = false  # VPC Endpoints for SSM
+enable_bastion           = false  # Bastion host for RDS access
+
+# Static sites (not typically used in DEV)
+enable_web_admin         = false
+enable_web_passenger     = false
+enable_web_driver        = false
+```
+
+**To enable resources:**
+1. Edit `terraform.tfvars` and set toggles to `true`
+2. Run `terraform plan` to review changes
+3. Run `terraform apply` to create resources
+
+**To disable resources:**
+1. Set toggles to `false` in `terraform.tfvars`
+2. Run `terraform destroy` to remove resources (or `terraform apply` to update)
+
+### 6.2 Alternative: Stop/Start Instances
+
+For temporary cost savings without destroying infrastructure:
+
+**Stop instances manually:**
+```powershell
+# Stop backend EC2 instance
+aws ec2 stop-instances --region ap-southeast-1 --instance-ids i-XXXXXXXXXXXXX
+
+# Stop RDS database
+aws rds stop-db-instance --region ap-southeast-1 --db-instance-identifier d2-ride-booking-dev-rds-mysql
+```
+
+**Start instances:**
+```powershell
+# Start backend EC2 instance
+aws ec2 start-instances --region ap-southeast-1 --instance-ids i-XXXXXXXXXXXXX
+
+# Start RDS database (restarts automatically after 7 days)
+aws rds start-db-instance --region ap-southeast-1 --db-instance-identifier d2-ride-booking-dev-rds-mysql
+```
+
+**Note:** Check `infra/scripts/` for lifecycle management scripts if available.
+
+---
+
+## 7. Cognito User Management
+
+### 7.1 Get Cognito Configuration
+
+```powershell
+cd infra\terraform\envs\dev
+terraform output
+```
+
+Look for outputs containing:
+- `cognito_user_pool_id`
+- `cognito_app_client_id`
+- `cognito_issuer`
+
+### 7.2 Create Admin User
+
+```powershell
+# Set variables
+$USER_POOL_ID = "ap-southeast-1_XXXXXXXXX"
+$USERNAME = "admin@demo.fikri.dev"
+$TEMP_PASSWORD = "TempPassword123!"
+
+# Create user
+aws cognito-idp admin-create-user `
+    --region ap-southeast-1 `
+    --user-pool-id $USER_POOL_ID `
+    --username $USERNAME `
+    --temporary-password $TEMP_PASSWORD `
+    --user-attributes Name=email,Value=$USERNAME Name=email_verified,Value=true
+
+# Set permanent password (skip password change requirement)
+aws cognito-idp admin-set-user-password `
+    --region ap-southeast-1 `
+    --user-pool-id $USER_POOL_ID `
+    --username $USERNAME `
+    --password "Password123!" `
+    --permanent
+```
+
+### 7.3 Test Authentication
+
+```powershell
+$CLIENT_ID = "1ak3tj1bn3neor7hgsjr1ml5h3"
+
+# Authenticate and get tokens
+aws cognito-idp initiate-auth `
+    --region ap-southeast-1 `
+    --auth-flow USER_PASSWORD_AUTH `
+    --client-id $CLIENT_ID `
+    --auth-parameters USERNAME="admin@demo.fikri.dev",PASSWORD="Password123!"
+```
+
+Successful response includes:
+- `IdToken` - Use for API authentication
+- `AccessToken` - Use for Cognito API calls
+- `RefreshToken` - Use to get new tokens
+
+---
+
+## 8. Understanding the Architecture
+
+### 8.1 DEV vs PROD Differences
+
+**DEV Environment (Single EC2):**
+- Single EC2 instance running backend-api (port 3000)
+- Direct EC2 access via Session Manager
+- Optional bastion for RDS access
+- Cost-optimized: can be stopped when not in use
+- Simple deployment via SSM commands
+
+**PROD Environment (ASG + ALB):**
+- Auto Scaling Groups (ASGs) for both backend-api and web-driver
+- Application Load Balancer (ALB) with HTTPS
+- CloudFront + S3 for static sites (web-admin, web-passenger)
+- Rolling deployments with zero downtime
+- Always-on with high availability
+
+### 8.2 Backend API Service
+
+The project uses a **single backend API service** (`backend-api`) that handles all API requests:
+- Runs on port 3000
+- Managed by PM2 (process manager)
+- Located in `apps/backend-api/`
+- Uses ecosystem.config.js for PM2 configuration
+
+**Note:** There is no separate `backend-api-v2` service in production. The `apps/backend-api-v2/` directory is for development/testing purposes only.
+
+### 8.3 Service Ports
+
+```
+Port 3000: backend-api (NestJS REST API)
+Port 3001: web-driver (Next.js SSR) [PROD only with ALB]
+```
+
+---
+
+**Last Updated:** 2026-02-04
