@@ -1,18 +1,36 @@
+// Import NestJS exception classes
 import {
   ConflictException,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+// Import Express Request type
 import type { Request } from 'express';
+// Import audit service for logging changes
 import { AuditService } from '../../audit/audit.service';
+// Import Prisma service for database operations
 import { PrismaService } from '../../database/prisma.service';
 
+/**
+ * Sort and deduplicate string array
+ * @param values - Array of strings
+ * @returns Sorted array with duplicates removed
+ */
 function uniqueSorted(values: readonly string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * RoleService - Business logic for role CRUD operations
+ * Handles role management with audit logging, permission assignment, and referential integrity
+ */
 @Injectable()
 export class RoleService {
+  /**
+   * Constructor - injects dependencies
+   * @param prisma - Database service
+   * @param audit - Audit logging service
+   */
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService

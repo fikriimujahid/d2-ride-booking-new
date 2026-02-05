@@ -1,3 +1,4 @@
+// Import NestJS controller decorators
 import {
   Body,
   Controller,
@@ -9,25 +10,43 @@ import {
   Req,
   UseGuards
 } from '@nestjs/common';
+// Import Express Request type
 import type { Request } from 'express';
+// Import Swagger decorators for API documentation
 import { ApiBearerAuth, ApiTags, ApiBody } from '@nestjs/swagger';
+// Import authentication and authorization guards
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { SystemGroupGuard } from '../../auth/system-group.guard';
 import { SystemGroup as SystemGroupMeta } from '../../auth/decorators/system-group.decorator';
 import { SystemGroup } from '../../auth/enums/system-group.enum';
 import { RbacGuard } from '../rbac/rbac.guard';
 import { RequirePermissions } from '../rbac/permission.decorator';
+// Import DTOs
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { ReplaceRolePermissionsDto } from './dto/replace-role-permissions.dto';
+// Import role service
 import { RoleService } from './role.service';
 
-@ApiTags('admin-iam')
-@ApiBearerAuth('bearer')
+/**
+ * RoleController - REST API controller for managing RBAC roles
+ * Routes: /admin/roles
+ * 
+ * All endpoints require:
+ * - Valid JWT (JwtAuthGuard)
+ * - ADMIN system group (SystemGroupGuard)
+ * - Specific RBAC permissions (RbacGuard + @RequirePermissions)
+ */
+@ApiTags('admin-iam')  // Swagger group
+@ApiBearerAuth('bearer')  // Require Bearer token
 @Controller('admin/roles')
-@SystemGroupMeta(SystemGroup.ADMIN)
-@UseGuards(JwtAuthGuard, SystemGroupGuard, RbacGuard)
+@SystemGroupMeta(SystemGroup.ADMIN)  // All routes require ADMIN group
+@UseGuards(JwtAuthGuard, SystemGroupGuard, RbacGuard)  // Apply guard chain
 export class RoleController {
+  /**
+   * Constructor - injects role service
+   * @param roles - RoleService for business logic
+   */
   constructor(private readonly roles: RoleService) {}
 
   @Get()
